@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Edit Driver Patti #{{ patti.id }}</h2>
+
+<form method="POST" action="/update_driver_patti/{{ patti.id }}" class="mb-4">
+  <div class="mb-3 d-flex align-items-center">
+    <input class="form-control me-2" value="{{ patti.driver_name }}" readonly style="width: 300px;">
+    <input type="date" name="date" value="{{ patti.patti_date }}" class="form-control me-2" style="max-width: 180px;">
+    <input type="number" step="0.1" name="transport_rate" value="{{ patti.patti_rate }}" class="form-control me-2" placeholder="Transport Rate (₹/box)" style="max-width: 180px;">
+    <button type="submit" class="btn btn-primary">Update Patti</button>
+  </div>
+</form>
+
+<table class="table table-bordered">
+  <thead>
+    <tr>
+      <th>Farmer</th><th>Lot No</th><th>JK</th><th>Other</th><th>Total</th><th>Amount</th><th>Save</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for lot in lots %}
+    <tr>
+      <form method="POST" action="/update_lot/{{ lot.lot_id }}">
+        <td><input type="text" name="farmer_name" class="form-control" value="{{ lot.farmer_name }}"></td>
+        <td><input type="text" name="lot_number" class="form-control" value="{{ lot.lot_number }}"></td>
+        <td><input type="number" name="jk_boxes" class="form-control jk_boxes" value="{{ lot.jk_boxes }}"></td>
+        <td><input type="number" name="other_boxes" class="form-control other_boxes" value="{{ lot.other_boxes }}"></td>
+        <td><input type="text" class="form-control total_boxes" readonly value="{{ lot.jk_boxes + lot.other_boxes }}"></td>
+        <td><input type="text" class="form-control total_amount" readonly value="{{ (lot.jk_boxes + lot.other_boxes) * patti.patti_rate }}"></td>
+        <td><button type="submit" class="btn btn-success">💾</button></td>
+      </form>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<script>
+  const pattiRate = parseFloat({{ patti.patti_rate }});
+  document.querySelectorAll("form").forEach(form => {
+    const jk = form.querySelector('[name="jk_boxes"]');
+    const other = form.querySelector('[name="other_boxes"]');
+    const totalBoxes = form.querySelector(".total_boxes");
+    const totalAmount = form.querySelector(".total_amount");
+
+    function update() {
+      const jkVal = parseInt(jk?.value || 0);
+      const otherVal = parseInt(other?.value || 0);
+      const total = jkVal + otherVal;
+      totalBoxes.value = total;
+      totalAmount.value = (total * pattiRate).toFixed(2);
+    }
+
+    jk?.addEventListener("input", update);
+    other?.addEventListener("input", update);
+  });
+</script>
+{% endblock %}

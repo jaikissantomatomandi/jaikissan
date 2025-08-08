@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Receipt</title>
+  <style>
+    body { font-family: monospace; width: 70mm; margin: 0 auto; }
+    .receipt-section { display: none; }
+    .visible { display: block; }
+    h2, h3, p { margin: 4px 0; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px dashed #000; padding: 4px; font-size: 14px; text-align: left; }
+    .right { text-align: right; }
+    .btn-container { margin-top: 16px; text-align: center; }
+    @media print {
+      body * { visibility: hidden; }
+      .receipt-section.visible, .receipt-section.visible * { visibility: visible; }
+      .receipt-section { position: absolute; top: 0; left: 0; }
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Entry Successful</h2>
+  <div class="btn-container">
+    <button onclick="showAndPrint('driver')">Print Driver Patti</button>
+    <button onclick="showAndPrint('farmer')">Print Farmer Patti</button>
+    <a href="/entry" class="btn">Home</a>
+  </div>
+
+  <!-- Driver Patti Section -->
+  <div id="driver-receipt" class="receipt-section">
+    <h3>Jai Kissan Tomato Mundi</h3>
+    <p>Near Sakshi Office, Behind Navata School</p>
+    <p>Kakkalapalli Road, Anantapur</p>
+
+    <table>
+      <tr><td>Patti #:</td><td class="right">{{ patti.id }}</td></tr>
+      <tr><td>Date:</td><td class="right">{{ patti.date }}</td></tr>
+      <tr><td>Driver:</td><td class="right">{{ patti.driver_name }}</td></tr>
+      <tr><td>Rate:</td><td class="right">₹{{ patti.transport_rate }}</td></tr>
+      <tr><td>Vehicle No:</td><td class="right">{{ patti.vehicle_number }}</td></tr>
+      <tr><td>Village:</td><td class="right">{{ patti.village }}</td></tr>
+    </table>
+
+    <table>
+      <thead>
+        <tr><th>Lot</th><th>Farmer</th><th class="right">JK</th><th class="right">Other</th></tr>
+      </thead>
+      <tbody>
+        {% for lot in lots %}
+        <tr>
+          <td>{{ lot.lot_number }}</td>
+          <td>{{ lot.farmer_name }}</td>
+          <td class="right">{{ lot.jk_boxes }}</td>
+          <td class="right">{{ lot.other_boxes }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <table>
+      <tr><td>Total</td><td></td><td class="right">{{ total_jk }}</td><td class="right">{{ total_other }}</td></tr>
+      <tr><td colspan="3">Transport Cost</td><td class="right">₹{{ total_cost }}</td></tr>
+    </table>
+
+    <br><br>
+    <table>
+      <tr><td>Driver Sign</td><td class="right">Writer Sign</td></tr>
+    </table>
+  </div>
+
+  <!-- Future: Add farmer receipt here -->
+  <div id="farmer-receipt" class="receipt-section">
+    <h3>Farmer Receipt Coming Soon</h3>
+  </div>
+
+  <script>
+    function showAndPrint(type) {
+      const all = document.querySelectorAll('.receipt-section');
+      all.forEach(sec => sec.classList.remove('visible'));
+
+      const section = document.getElementById(type + '-receipt');
+      section.classList.add('visible');
+      window.print();
+    }
+  </script>
+
+</body>
+</html>

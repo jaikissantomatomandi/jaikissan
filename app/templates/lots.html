@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+
+<h2 class="mb-4">All Lot Entries</h2>
+
+<form method="get" class="row g-3 align-items-end mb-4">
+  <div class="col-auto">
+    <label for="date" class="form-label">Select Date:</label>
+    <input type="date" id="date" name="date" value="{{ selected_date }}" class="form-control" required>
+  </div>
+  <div class="col-auto">
+    <button type="submit" class="btn btn-primary">Filter</button>
+  </div>
+</form>
+
+<div class="table-responsive">
+  <table class="table table-bordered table-hover align-middle">
+    <thead class="table-light">
+      <tr>
+        <th scope="col">Driver Patti ID</th>
+        <th scope="col">Lot No</th>
+        <th scope="col">Driver Name</th>
+        <th scope="col">Village</th>
+        <th scope="col">Farmer Name</th>
+        <th scope="col">JK Boxes</th>
+        <th scope="col">Other Boxes</th>
+        <th scope="col">Rate (₹)</th>
+        <th scope="col">Total Amount (₹)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in lots %}
+      <tr>
+        <td>{{ row.driver_patti_id }}</td>
+        <td>{{ row.lot_number }}</td>
+        <td>{{ row.driver_name }}</td>
+        <td>{{ row.village }}</td>
+        <td>{{ row.farmer_name }}</td>
+        <td>{{ row.jk_boxes }}</td>
+        <td>{{ row.other_boxes }}</td>
+        <td>₹{{ "%.2f"|format(row.transport_rate) }}</td>
+        <td><strong>₹{{ "%.2f"|format(row.total_amount) }}</strong></td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="9" class="text-center text-muted">No lots found for selected date.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<a href="{{ url_for('main.entry') }}" class="btn btn-outline-secondary mt-3">← Back to Entry</a>
+
+{% endblock %}

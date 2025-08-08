@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Driver Patti Entry</h2>
+<form method="post" class="mb-4">
+<div class="mb-2 d-flex align-items-center">
+  <input id="driver_search" class="form-control me-2" placeholder="Start typing driver..." required />
+  <input type="hidden" name="driver_id" id="driver_id" />
+   <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">+</button>
+  <input type="date" name="date" id="patti_date" class="form-control me-2" required value="{{ today }}">
+ 
+</div>
+
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    let driverMap = {};
+    const driverInput = document.getElementById("driver_search");
+    const driverAwesomplete = new Awesomplete(driverInput, { minChars: 1, autoFirst: true });
+
+    driverInput.addEventListener("input", function () {
+      const q = this.value;
+      fetch("/api/drivers?q=" + encodeURIComponent(q))
+        .then(res => res.json())
+        .then(data => {
+          driverMap = {};
+          driverAwesomplete.list = data.map(d => {
+            const label = `${d.name} (${d.vehicle_number})`;
+            driverMap[label] = d;
+            return label;
+          });
+        });
+    });
+
+    driverInput.addEventListener("awesomplete-selectcomplete", function (e) {
+      const selected = driverMap[e.text.value];
+      if (selected) {
+        document.getElementById("driver_id").value = selected.id;
+        document.querySelector("input[name='transport_rate']").value = selected.default_rate || '';
+      }
+    });
+  });
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const dateInput = document.getElementById("patti_date");
+
+    function loadPattisForDate() {
+      const date = dateInput.value;
+      if (!date) return;
+
+      fetch("/api/driver_pattis?date=" + encodeURIComponent(date))
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#pattisTable tbody");
+          tbody.innerHTML = "";
+
+          if (data.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" class="text-center">No records found</td></tr>`;
+            return;
+          }
+
+          data.forEach(p => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>#${p.patti_id}</td>
+              <td>${p.driver_name}</td>
+              <td>${p.vehicle_number}</td>
+              <td>${p.village}</td>
+              <td>₹${(p.transport_rate ?? 0).toFixed(2)}</td>
+              <td>${p.jk_boxes}</td>
+              <td>${p.other_boxes}</td>
+              <td>${p.total_boxes}</td>
+              <td>₹${(p.total_transport_cost ?? 0).toFixed(2)}</td>
+              <td>${p.date}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        });
+    }
+
+    // Reload on date change
+    dateInput.addEventListener("change", loadPattisForDate);
+
+    // Initial load
+    loadPattisForDate();
+  });
+
+
+
+</script>
+
+  <input type="number" step="0.01" name="transport_rate" placeholder="Transport Rate (₹/box)" class="form-control mb-2" required>
+  <!-- <input type="number" name="jk_boxes" placeholder="JK Boxes" class="form-control mb-2" required> -->
+  <!-- <input type="number" name="other_boxes" placeholder="Other Boxes" class="form-control mb-2" required> -->
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+<h3>All Driver Pattis</h3>
+<table class="table table-bordered" id="pattisTable">
+  <thead>
+    <tr>
+      <th>Patti #</th>
+      <th>Driver</th>
+      <th>Vehicle No</th>
+      <th>Village</th>
+      <th>Rate</th>
+      <th>JK Boxes</th>
+      <th>Other Boxes</th>
+      <th>Total Boxes</th>
+      <th>Transport Cost</th>
+      <th>Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for p in pattis %}
+    <tr>
+      <td>#{{ p['patti_id'] }}</td>
+      <td>{{ p['driver_name'] }}</td>
+      <td>{{ p['vehicle_number'] }}</td>
+      <td>{{ p['village'] }}</td>
+      <td>₹{{ "%.2f"|format(p['transport_rate']) }}</td>
+      <td>{{ p['jk_boxes'] }}</td>
+      <td>{{ p['other_boxes'] }}</td>
+      <td>{{ p['total_boxes'] }}</td>
+      <td>₹{{ "%.2f"|format(p['cost']) }}</td>
+      <td>{{ p['date'] }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+
+
+<!-- Add Driver Modal -->
+<div class="modal fade" id="addDriverModal" tabindex="-1" aria-labelledby="addDriverLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/add_driver_modal">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addDriverLabel">Add New Driver</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" name="name" placeholder="Driver Name" class="form-control mb-2" required>
+          <input type="text" name="vehicle_number" placeholder="Vehicle Number" class="form-control mb-2">
+          <input type="text" name="village" placeholder="Village" class="form-control mb-2">
+          <input type="number" step="0.01" name="default_rate" placeholder="Default Rate" class="form-control mb-2" required>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Add Driver</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,190 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="d-flex align-items-center justify-content-between mb-3">
+  <h2 class="mb-0">Lot Info</h2>
+  <input type="date" name="date" id="lot_date" class="form-control ms-2" style="max-width: 200px;" required value="{{ today }}">
+</div>
+
+<form method="post" class="mb-4">
+  <input type="hidden" name="date" id="form_date">
+<div class="mb-2 d-flex align-items-center">
+  <input id="patti_search" class="form-control me-2" placeholder="Start typing Patti ID..." autocomplete="off" required />
+  <input type="hidden" name="driver_patti_id" id="driver_patti_id" />
+</div>
+ <div class="mb-2 d-flex align-items-center">
+  <input id="farmer_search" class="form-control me-2" placeholder="Start typing farmer..." autocomplete="off" required />
+  <input type="hidden" name="farmer_id" id="farmer_id" />
+  <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addFarmerModal">+</button>
+</div>
+
+  <input type="text" name="lot_number" placeholder="Lot Number" class="form-control mb-2" readonly>
+  <input type="number" name="jk_boxes" placeholder="JK Boxes" class="form-control mb-2" required>
+  <input type="number" name="other_boxes" placeholder="Other Boxes" class="form-control mb-2" required>
+  <input type="number" step="0.01" name="transport_rate" placeholder="Transport Rate" class="form-control mb-2" readonly required>
+  <button type="submit" class="btn btn-primary">Submit</button>
+</form>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const form = document.querySelector("form");
+    const dateInput = document.getElementById("lot_date");
+    form.addEventListener("submit", function () {
+  document.getElementById("form_date").value = dateInput.value;
+});
+
+    // Reset form and reload lots when date changes
+    dateInput.addEventListener("change", () => {
+      const selectedDate = dateInput.value;
+      if (!selectedDate) return;
+
+      // Reset all form fields (except the date picker)
+      form.reset();
+      dateInput.value = selectedDate;
+
+      updateLotNumber();
+      loadPattisForDate();
+      loadLots();
+    });
+
+    // Auto-generate lot number for selected date
+    function updateLotNumber() {
+      const date = dateInput.value;
+      if (!date) return;
+      fetch("/api/next_lot_number?date=" + encodeURIComponent(date))
+        .then(res => res.json())
+        .then(data => {
+          document.querySelector("input[name='lot_number']").value = data.lot_number || '';
+        });
+    }
+
+    // Awesomplete for Farmer
+    let farmerMap = {};
+    const farmerInput = document.getElementById("farmer_search");
+    const farmerAwesomplete = new Awesomplete(farmerInput, { minChars: 1, autoFirst: true });
+
+    farmerInput.addEventListener("input", function () {
+      const q = this.value;
+      fetch("/api/farmers?q=" + encodeURIComponent(q))
+        .then(res => res.json())
+        .then(data => {
+          farmerMap = {};
+          farmerAwesomplete.list = data.map(f => {
+            const label = `${f.name} (${f.phone || ''})`;
+            farmerMap[label] = f;
+            return label;
+          });
+        });
+    });
+
+    farmerInput.addEventListener("awesomplete-selectcomplete", function (e) {
+      const selected = farmerMap[e.text.value];
+      if (selected) {
+        document.getElementById("farmer_id").value = selected.id;
+      }
+    });
+
+    // Awesomplete for Patti
+    let pattiMap = {};
+    const pattiInput = document.getElementById("patti_search");
+    const pattiAwesomplete = new Awesomplete(pattiInput, { minChars: 1, autoFirst: true });
+
+    function loadPattisForDate() {
+      const date = dateInput.value;
+      if (!date) return;
+
+      fetch("/api/pattis?q=" + encodeURIComponent(date))
+        .then(res => res.json())
+        .then(data => {
+          pattiMap = {};
+          pattiAwesomplete.list = data.map(p => {
+            const label = `#${p.id} - ${p.driver_name} (${p.vehicle_number})`;
+            pattiMap[label] = p;
+            return label;
+          });
+        });
+    }
+
+    pattiInput.addEventListener("awesomplete-selectcomplete", function (e) {
+      const selected = pattiMap[e.text.value];
+      if (selected) {
+        document.getElementById("driver_patti_id").value = selected.id;
+        document.querySelector("input[name='transport_rate']").value = selected.transport_rate || '';
+      }
+    });
+
+    // Show lots for selected date
+    function loadLots() {
+      const date = dateInput.value;
+      if (!date) return;
+
+      fetch("/api/lots?date=" + encodeURIComponent(date))
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#lotsTable tbody");
+          tbody.innerHTML = ""; // clear previous rows
+
+          data.forEach(l => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${l.lot_number}</td>
+              <td>${l.farmer_name}</td>
+              <td>${l.jk_boxes}</td>
+              <td>${l.other_boxes}</td>
+              <td>${l.total_boxes}</td>
+              <td>₹${l.transport_amount}</td>
+              <td>${l.date}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        });
+    }
+
+    // Initial page load
+    updateLotNumber();
+    loadPattisForDate();
+    loadLots();
+  });
+</script>
+
+<h3>All Lots</h3>
+<table class="table table-bordered" id="lotsTable">
+  <thead>
+    <tr>
+      <th>Lot</th><th>Farmer</th><th>JK</th><th>Other</th><th>Total</th><th>Amount</th><th>Date</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lots %}
+    <tr>
+      <td>{{ l.lot_number }}</td>
+      <td>{{ l.farmer_name }}</td>
+      <td>{{ l.jk_boxes }}</td>
+      <td>{{ l.other_boxes }}</td>
+      <td>{{ l.total_boxes }}</td>
+      <td>₹{{ l.transport_amount }}</td>
+      <td>{{ l.date }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<!-- Add Farmer Modal -->
+<div class="modal fade" id="addFarmerModal" tabindex="-1" aria-labelledby="addFarmerLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form method="post" action="/add_farmer_modal">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addFarmerLabel">Add New Farmer</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="text" name="name" placeholder="Farmer Name" class="form-control mb-2" required>
+          <input type="text" name="phone" placeholder="Phone" class="form-control mb-2">
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">Add Farmer</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+{% endblock %}

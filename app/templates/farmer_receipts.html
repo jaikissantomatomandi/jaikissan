@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Farmer Receipts</title>
+  <style>
+    body { font-family: monospace; width: 70mm; margin: 0 auto; }
+    .receipt { page-break-after: always; margin-bottom: 40px; }
+    h2, p { text-align: center; margin: 4px 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    th, td { border-bottom: 1px dashed #000; padding: 4px; font-size: 14px; text-align: left; }
+    .right { text-align: right; }
+    @media print {
+      .no-print { display: none; }
+      .receipt { page-break-after: always; }
+    }
+  </style>
+</head>
+<body>
+  <div class="no-print" style="text-align:center; margin-bottom: 10px;">
+    <button onclick="window.print()">Print All Farmer Pattis</button>
+    <a href="/entry">Home</a>
+  </div>
+
+  {% for farmer_id, lots in farmer_lots.items() %}
+    <div class="receipt">
+      <h2>Jai Kissan</h2>
+      <p>Farmer: {{ lots[0].farmer_name }}<span style="float:right">Date: {{ lots[0].date }}</span></p>
+
+      <table>
+        <thead>
+          <tr><th>Lot No</th><th class="right">Total Boxes</th></tr>
+        </thead>
+        <tbody>
+          {% set total_boxes = 0 %}
+          {% for lot in lots %}
+            {% set lot_total = lot.jk_boxes + lot.other_boxes %}
+            <tr>
+              <td>{{ lot.lot_number }}</td>
+              <td class="right">{{ lot_total }}</td>
+            </tr>
+            {% set total_boxes = total_boxes + lot_total %}
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <p><strong>Total Boxes: {{ total_boxes }}</strong></p>
+
+      <br><br>
+      <table>
+        <tr>
+          <td>Farmer Sign</td>
+          <td class="right">Writer Sign</td>
+        </tr>
+      </table>
+    </div>
+  {% endfor %}
+
+</body>
+</html>
