@@ -266,18 +266,23 @@ def api_driver_pattis():
     conn.close()
     return jsonify([dict(row) for row in rows])
 
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo  # requires Python 3.9+
+
 @main.route("/entry", methods=["GET", "POST"])
 def entry():
     if request.method == "GET":
-        now = datetime.now()
+        ist = ZoneInfo("Asia/Kolkata")  # Use pytz.timezone("Asia/Kolkata") for older Python
+        now = datetime.now(ist)
+
         if now.hour < 10:
             entry_date = now.date()
         else:
-            from datetime import timedelta
             entry_date = now.date() + timedelta(days=1)
 
         return render_template("entry.html", today=entry_date.strftime("%Y-%m-%d"))
 
+    # POST logic remains the same
     date_val = request.form["date"]
     driver_id = request.form.get("driver_id")
     transport_rate = float(request.form["transport_rate"])
