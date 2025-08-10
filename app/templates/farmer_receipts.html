@@ -3,18 +3,70 @@
 <head>
   <meta charset="UTF-8">
   <title>Farmer Receipts</title>
-  <style>
-    body { font-family: monospace; width: 70mm; margin: 0 auto; }
-    .receipt { page-break-after: always; margin-bottom: 40px; }
-    h2, p { text-align: center; margin: 4px 0; }
-    table { width: 100%; border-collapse: collapse; margin-top: 8px; }
-    th, td { border-bottom: 1px dashed #000; padding: 4px; font-size: 14px; text-align: left; }
-    .right { text-align: right; }
-    @media print {
-      .no-print { display: none; }
-      .receipt { page-break-after: always; }
-    }
-  </style>
+<style>
+  body {
+    font-family: monospace;
+    width: 70mm;
+    margin: 0 auto;
+  }
+
+  .receipt {
+    page-break-after: always;
+    margin-bottom: 40px;
+    min-height: 10cm;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid black;
+    padding: 8px;
+  }
+
+  .receipt-header {
+    font-size: 20px;
+    font-weight: bold;
+    text-align: center;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+  }
+
+  .receipt-content {
+    flex-grow: 0;  /* Keeps content tight at top */
+  }
+
+  .signature-section {
+    margin-top: auto;  /* Pushes to bottom */
+  }
+
+  .header-line {
+    display: flex;
+    justify-content: space-between;
+    font-weight: bold;
+    margin: 4px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 8px;
+  }
+
+  th, td {
+    border-bottom: 1px dashed #000;
+    padding: 4px;
+    font-size: 14px;
+    text-align: left;
+  }
+
+  .right {
+    text-align: right;
+  }
+
+  @media print {
+    .no-print { display: none; }
+    .receipt { page-break-after: always; }
+  }
+</style>
+
 </head>
 <body>
   <div class="no-print" style="text-align:center; margin-bottom: 10px;">
@@ -23,37 +75,44 @@
   </div>
 
   {% for farmer_id, lots in farmer_lots.items() %}
-    <div class="receipt">
-      <h2>Jai Kissan</h2>
-      <p>Farmer: {{ lots[0].farmer_name }}<span style="float:right">Date: {{ lots[0].date }}</span></p>
+   <div class="receipt">
+  <div class="receipt-content">
+    <div class="receipt-header">Jai Kissan Tomato Mundi</div>
 
-      <table>
-        <thead>
-          <tr><th>Lot No</th><th class="right">Total Boxes</th></tr>
-        </thead>
-        <tbody>
-          {% set total_boxes = 0 %}
-          {% for lot in lots %}
-            {% set lot_total = lot.jk_boxes + lot.other_boxes %}
-            <tr>
-              <td>{{ lot.lot_number }}</td>
-              <td class="right">{{ lot_total }}</td>
-            </tr>
-            {% set total_boxes = total_boxes + lot_total %}
-          {% endfor %}
-        </tbody>
-      </table>
-
-      <p><strong>Total Boxes: {{ total_boxes }}</strong></p>
-
-      <br><br>
-      <table>
-        <tr>
-          <td>Farmer Sign</td>
-          <td class="right">Writer Sign</td>
-        </tr>
-      </table>
+    <div class="header-line">
+      <span>Farmer: {{ lots[0].farmer_name }}</span>
+      <span>Date: {{ lots[0].date }}</span>
     </div>
+
+    <table>
+      <thead>
+        <tr><th>Lot No</th><th class="right">Total Boxes</th></tr>
+      </thead>
+      <tbody>
+        {% set total_boxes = 0 %}
+        {% for lot in lots %}
+          {% set lot_total = lot.jk_boxes + lot.other_boxes %}
+          <tr>
+            <td>{{ lot.lot_number }}</td>
+            <td class="right">{{ lot_total }}</td>
+          </tr>
+          {% set total_boxes = total_boxes + lot_total %}
+        {% endfor %}
+      </tbody>
+    </table>
+
+  </div>
+
+  <div class="signature-section">
+    <br><br>
+    <table>
+      <tr>
+        <td class="right">Writer Sign</td>
+      </tr>
+    </table>
+  </div>
+</div>
+
   {% endfor %}
 
 </body>

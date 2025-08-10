@@ -4,16 +4,23 @@
 <form method="post" id="entryForm">
   <input type="hidden" name="date" id="form_date">
 
-  <!-- Driver Section -->
-  <div class="mb-3 d-flex align-items-center">
-    <div class="flex-grow-1 me-2" style="flex: 3;">
-      <input id="driver_search" name="driver_name" class="form-control" placeholder="Start typing driver..." required style="width: 400px;" >
-      <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">+</button>
-    </div>
-    <input type="hidden" name="driver_id" id="driver_id">
-    <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control me-2" placeholder="Transport Rate (₹/box)" required style="max-width: 180px;">
-    <input type="date" id="entry_date" class="form-control me-2" value="{{ today }}" required style="max-width: 180px;">
+  <!-- Driver and Farmer Section -->
+<div class="mb-3 d-flex align-items-center">
+  <div class="flex-grow-1 me-2" style="flex: 3;">
+    <input id="driver_search" name="driver_name" class="form-control" placeholder="Start typing driver..." required style="width: 400px;" >
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">
+      Add Driver
+    </button>
+      <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#addFarmerModal">
+    Add Farmer
+  </button>
   </div>
+  <input type="hidden" name="driver_id" id="driver_id">
+  <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control me-2" placeholder="Transport Rate (₹/box)" required style="max-width: 180px;">
+  <input type="date" id="entry_date" class="form-control me-2" value="{{ today }}" required style="max-width: 180px;">
+
+</div>
+
 
   <!-- Lots Table -->
   <table class="table table-bordered" id="lotsTable">
@@ -26,11 +33,10 @@
       <tr>
         <td class="lot_number_cell">1</td>
         <td>
-          <div class="d-flex">
-            <input class="form-control farmer_search" name="farmer_name[]" required>
-            <input type="hidden" name="farmer_id[]" class="farmer_id">
-            <button type="button" class="btn btn-success ms-1" data-bs-toggle="modal" data-bs-target="#addFarmerModal">+</button>
-          </div>
+<div class="d-flex">
+  <input class="form-control farmer_search" name="farmer_name[]" required>
+  <input type="hidden" name="farmer_id[]" class="farmer_id">
+</div>
         </td>
         <td><input type="number" name="jk_boxes[]" class="form-control jk_boxes" min="0" required></td>
         <td><input type="number" name="other_boxes[]" class="form-control other_boxes" min="0" required></td>

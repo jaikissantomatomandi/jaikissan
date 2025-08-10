@@ -16,7 +16,7 @@ def get_db_connection():
 
 @main.route('/')
 def home():
-    return redirect(url_for('main.driver_patti'))
+    return redirect(url_for('main.entry'))
 
 @main.route('/driver_patti', methods=['GET', 'POST'])
 def driver_patti():
@@ -329,6 +329,16 @@ def entry():
             int(jk_boxes[i]),
             int(other_boxes[i])
         ))
+    
+    unique_pairs = set(zip([driver_patti_id]*len(farmer_ids), farmer_ids))
+    for dp_id, f_id in unique_pairs:
+        try:
+            cur.execute("""
+                INSERT OR IGNORE INTO farmer_patti (driver_patti_id, farmer_id)
+                VALUES (?, ?)
+            """, (dp_id, f_id))
+        except Exception as e:
+            print("Farmer Patti insert error:", e)
 
     db_conn.commit()
     return redirect(url_for("main.entry"))
@@ -359,6 +369,7 @@ def show_receipt(patti_id):
     db = get_db_connection()
     cur = db.cursor()
 
+    # Driver patti header
     patti = cur.execute("""
         SELECT dp.id, dp.date, d.name AS driver_name, d.vehicle_number, d.village, dp.transport_rate
         FROM driver_patti dp
@@ -366,19 +377,55 @@ def show_receipt(patti_id):
         WHERE dp.id = ?
     """, (patti_id,)).fetchone()
 
+    # All lots under this patti (include farmer_id for grouping)
     lots = cur.execute("""
-        SELECT li.lot_number, f.name AS farmer_name, li.jk_boxes, li.other_boxes
+        SELECT li.lot_number,
+               f.name AS farmer_name,
+               f.id   AS farmer_id,
+               li.jk_boxes,
+               li.other_boxes
         FROM lot_info li
         JOIN farmer f ON f.id = li.farmer_id
         WHERE li.driver_patti_id = ?
+        ORDER BY li.lot_number
     """, (patti_id,)).fetchall()
 
-    total_jk = sum(l["jk_boxes"] for l in lots)
-    total_other = sum(l["other_boxes"] for l in lots)
-    total_cost = (total_jk + total_other) * patti["transport_rate"]
+    total_jk = sum(int(l["jk_boxes"] or 0) for l in lots)
+    total_other = sum(int(l["other_boxes"] or 0) for l in lots)
+    total_cost = (total_jk + total_other) * float(patti["transport_rate"])
 
-    return render_template("receipt.html", patti=patti, lots=lots,
-                           total_jk=total_jk, total_other=total_other, total_cost=total_cost)
+    # Pull farmer_patti ids and stitch lots to each farmer
+    farmer_rows = cur.execute("""
+        SELECT fp.id AS farmer_patti_id, f.id AS farmer_id, f.name AS farmer_name
+        FROM farmer_patti fp
+        JOIN farmer f ON f.id = fp.farmer_id
+        WHERE fp.driver_patti_id = ?
+        ORDER BY f.name
+    """, (patti_id,)).fetchall()
+
+    farmer_groups = []
+    for fr in farmer_rows:
+        flots = [l for l in lots if l["farmer_id"] == fr["farmer_id"]]
+        farmer_groups.append({
+            "farmer_patti_id": fr["farmer_patti_id"],
+            "farmer_name": fr["farmer_name"],
+            "lots": [{
+                "lot_number": l["lot_number"],
+                "boxes": int(l["jk_boxes"] or 0) + int(l["other_boxes"] or 0),
+            } for l in flots],
+            "total": sum(int(l["jk_boxes"] or 0) + int(l["other_boxes"] or 0) for l in flots),
+        })
+
+    return render_template(
+        "receipt.html",
+        patti=patti,
+        lots=lots,
+        total_jk=total_jk,
+        total_other=total_other,
+        total_cost=total_cost,
+        farmer_groups=farmer_groups
+    )
+
 
 @main.route("/receipt/farmer_pattis/<int:driver_patti_id>")
 def farmer_patti_receipts(driver_patti_id):
@@ -387,8 +434,9 @@ def farmer_patti_receipts(driver_patti_id):
 
     # Get all lots for this patti with farmer info
     lots = cur.execute("""
-        SELECT li.lot_number, li.jk_boxes, li.other_boxes, li.date, f.name as farmer_name, f.id as farmer_id
+        SELECT li.lot_number, li.jk_boxes, li.other_boxes, dp.date, f.name as farmer_name, f.id as farmer_id
         FROM lot_info li
+        JOIN driver_patti dp ON li.driver_patti_id = dp.id
         JOIN farmer f ON f.id = li.farmer_id
         WHERE li.driver_patti_id = ?
         ORDER BY f.name, li.lot_number
@@ -487,3 +535,221 @@ def show_lots():
     return render_template('lots.html', lots=lots, selected_date=selected_date)
 
 
+@main.route("/api/buyers")
+def api_buyers():
+    q = request.args.get("q", "").strip()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if q:
+        cur.execute("""
+            SELECT id, name, nick_name
+            FROM buyers
+            WHERE nick_name LIKE ? OR name LIKE ?
+            ORDER BY nick_name, name
+            LIMIT 20
+        """, (f"%{q}%", f"%{q}%"))
+    else:
+        cur.execute("""
+            SELECT id, name, nick_name
+            FROM buyers
+            ORDER BY nick_name, name
+            LIMIT 50
+        """)
+    rows = cur.fetchall()
+    conn.close()
+
+    # Return {id, label} where label = "Nick (Name)" or just one of them
+    out = []
+    for r in rows:
+        name = r["name"] or ""
+        nick = r["nick_name"] or ""
+        if nick and name:
+            label = f"{nick} ({name})"
+        else:
+            label = nick or name
+        out.append({"id": r["id"], "label": label})
+    return jsonify(out)
+
+
+@main.route("/api/buyers", methods=["POST"])
+def api_create_buyer():
+    data = request.get_json(silent=True) or request.form
+    name = (data.get("name") or "").strip()
+    nick = (data.get("nick_name") or "").strip()
+    location = (data.get("location") or "").strip()
+    address = (data.get("address") or "").strip()
+    phone = (data.get("phone_number") or "").strip()
+
+    if not (name or nick):
+        return jsonify(success=False, error="Provide at least Name or Nick Name"), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO buyers (name, nick_name, location, address, phone_number)
+        VALUES (?, ?, ?, ?, ?)
+    """, (name, nick, location, address, phone))
+    new_id = cur.lastrowid
+    conn.commit()
+    conn.close()
+
+    label = f"{nick} ({name})" if (nick and name) else (nick or name)
+    return jsonify(success=True, id=new_id, label=label)
+
+@main.route("/add_buyer_modal", methods=["POST"])
+def add_buyer_modal():
+    name = (request.form.get("name") or "").strip()
+    nick = (request.form.get("nick_name") or "").strip()
+    location = (request.form.get("location") or "").strip()
+    address = (request.form.get("address") or "").strip()
+    phone = (request.form.get("phone_number") or "").strip()
+
+    if not (name or nick):
+        flash("Please enter at least Nick Name or Name for the buyer.")
+        return redirect(request.referrer or url_for("main.sales"))
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO buyers (name, nick_name, location, address, phone_number)
+        VALUES (?, ?, ?, ?, ?)
+    """, (name, nick, location, address, phone))
+    conn.commit()
+    conn.close()
+
+    flash("Buyer added.")
+    return redirect(request.referrer or url_for("main.sales"))
+
+@main.route("/sales", methods=["GET", "POST"])
+def sales():
+    if request.method == "POST":
+        date_val = request.form.get("date")
+        if not date_val:
+            flash("Please select a date.")
+            return redirect(url_for("main.sales"))
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 1) Collect only rows that have BOTH buyer_id and rate
+        lot_ids_to_check = []
+        parsed_rows = {}  # lot_id -> {"buyer_id":int, "rate":float, "less":int}
+        for key in request.form.keys():
+            if not key.startswith("rate_"):
+                continue
+            lot_id = key.split("_", 1)[1]
+
+            rate_raw = (request.form.get(f"rate_{lot_id}") or "").strip()
+            buyer_id_raw = (request.form.get(f"buyer_id_{lot_id}") or "").strip()
+            less_raw = (request.form.get(f"less_{lot_id}") or "").strip()
+
+            if not (rate_raw and buyer_id_raw):
+                continue  # require both to consider
+
+            try:
+                rate = float(rate_raw)
+                buyer_id = int(buyer_id_raw)
+                less = int(less_raw) if less_raw else 0
+            except ValueError:
+                continue
+
+            lot_ids_to_check.append(lot_id)
+            parsed_rows[int(lot_id)] = {"buyer_id": buyer_id, "rate": rate, "less": less}
+
+        created = 0
+        updated = 0
+        unchanged = 0
+
+        if lot_ids_to_check:
+            # 2) Load existing sales for these lots
+            placeholders = ",".join(["?"] * len(lot_ids_to_check))
+            cur.execute(f"""
+                SELECT lot_id, buyer_id, rate, less
+                FROM sales
+                WHERE lot_id IN ({placeholders})
+            """, lot_ids_to_check)
+            existing_map = {
+                int(r["lot_id"]): {
+                    "buyer_id": r["buyer_id"],
+                    "rate": float(r["rate"]),
+                    "less": int(r["less"]),
+                }
+                for r in cur.fetchall()
+            }
+        else:
+            existing_map = {}
+
+        # 3) Insert new / update changed only
+        EPS = 1e-9  # float tolerance
+        for lot_id, vals in parsed_rows.items():
+            ex = existing_map.get(lot_id)
+            if ex is None:
+                cur.execute("""
+                    INSERT INTO sales (lot_id, buyer_id, rate, less)
+                    VALUES (?, ?, ?, ?)
+                """, (lot_id, vals["buyer_id"], vals["rate"], vals["less"]))
+                created += 1
+            else:
+                changed = (
+                    ex["buyer_id"] != vals["buyer_id"] or
+                    abs(ex["rate"] - vals["rate"]) > EPS or
+                    ex["less"] != vals["less"]
+                )
+                if changed:
+                    cur.execute("""
+                        UPDATE sales
+                        SET buyer_id = ?, rate = ?, less = ?
+                        WHERE lot_id = ?
+                    """, (vals["buyer_id"], vals["rate"], vals["less"], lot_id))
+                    updated += 1
+                else:
+                    unchanged += 1
+
+        conn.commit()
+        conn.close()
+
+        msg = f"Saved {created + updated} sale(s): {created} new, {updated} updated, {unchanged} unchanged for {date_val}."
+        xrw = request.headers.get("X-Requested-With", "")
+        if xrw in ("fetch", "XMLHttpRequest"):
+            return jsonify(success=True, created=created, updated=updated, unchanged=unchanged, message=msg)
+
+        flash(msg)
+        return redirect(url_for("main.sales", date=date_val))
+
+    # ---- GET ----
+    today_str = date.today().isoformat()
+    date_val = request.args.get("date", today_str)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT
+            li.id AS lot_id,
+            li.lot_number,
+            COALESCE(li.jk_boxes, 0) + COALESCE(li.other_boxes, 0) AS total_boxes
+        FROM lot_info li
+        JOIN driver_patti dp ON li.driver_patti_id = dp.id
+        WHERE dp.date = ?
+        ORDER BY li.lot_number
+    """, (date_val,))
+    lots = cur.fetchall()
+
+    sales_map = {}
+    if lots:
+        lot_ids = [str(r["lot_id"]) for r in lots]
+        placeholders = ",".join(["?"] * len(lot_ids))
+        cur.execute(f"""
+            SELECT lot_id, buyer_id, rate, less
+            FROM sales
+            WHERE lot_id IN ({placeholders})
+        """, lot_ids)
+        for r in cur.fetchall():
+            sales_map[r["lot_id"]] = {
+                "buyer_id": r["buyer_id"],
+                "rate": r["rate"],
+                "less": r["less"],
+            }
+
+    conn.close()
+    return render_template("sales.html", date_val=date_val, lots=lots, sales_map=sales_map)

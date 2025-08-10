@@ -1,0 +1,248 @@
+{% extends 'base.html' %}
+{% block content %}
+<h2>Sales (By Auction Date)</h2>
+<div class="position-fixed top-0 end-0 p-3" style="z-index: 1080">
+  <div id="saveToast" class="toast align-items-center text-white bg-success border-0" role="alert">
+    <div class="d-flex">
+      <div class="toast-body" id="saveToastBody">Saved.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+    </div>
+  </div>
+</div>
+<!-- Filter Row -->
+<form class="mb-3 d-flex align-items-center flex-wrap gap-2" method="get" action="{{ url_for('main.sales') }}">
+  <label for="sales_date" class="me-2 mb-0">Auction Date</label>
+  <input type="date" id="sales_date" name="date" class="form-control me-2" value="{{ date_val }}" required style="max-width: 180px;">
+  <button type="submit" class="btn btn-secondary">Load Lots</button>
+
+  <!-- One global Add Buyer button (applies to last-focused Buyer input) -->
+  <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#addBuyerModal">
+    + Add Buyer
+  </button>
+  <span class="text-muted ms-2">New buyer fills into the last Buyer field you touched.</span>
+</form>
+
+<form method="post" action="{{ url_for('main.sales') }}" id="salesForm">
+  <input type="hidden" name="date" value="{{ date_val }}">
+
+  <table class="table table-bordered">
+    <thead>
+      <tr>
+        <th style="width:120px;">Lot #</th>
+        <th style="width:140px;">Total Boxes</th>
+        <th>Buyer</th>
+        <th style="width:160px;">Rate</th>
+        <th style="width:120px;">Less</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if lots %}
+        {% for row in lots %}
+          {% set s = sales_map.get(row['lot_id']) %}
+          <tr>
+            <td>{{ row['lot_number'] }}</td>
+            <td>{{ row['total_boxes'] }}</td>
+            <td>
+              <input
+                class="form-control buyer_search"
+                placeholder="Start typing buyer…"
+                id="buyer_input_{{ row['lot_id'] }}"
+                {% if s and s['buyer_id'] %} data-prefill-id="{{ s['buyer_id'] }}"{% endif %}
+                autocomplete="off"
+                style="max-width: 360px;"
+              >
+              <input type="hidden" name="buyer_id_{{ row['lot_id'] }}" id="buyer_id_{{ row['lot_id'] }}" value="{{ s['buyer_id'] if s else '' }}">
+            </td>
+            <td>
+              <input type="number" step="0.01" name="rate_{{ row['lot_id'] }}"
+                     class="form-control" placeholder="Rate"
+                     value="{{ '{:.2f}'.format(s['rate']) if s and s['rate'] is not none else '' }}">
+            </td>
+            <td>
+              <input type="number" step="1" name="less_{{ row['lot_id'] }}"
+                     class="form-control" placeholder="0"
+                     value="{{ s['less'] if s and s['less'] is not none else '0' }}">
+            </td>
+          </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="5" class="text-muted">No lots found for {{ date_val }}.</td></tr>
+      {% endif %}
+    </tbody>
+  </table>
+
+  <!-- Spacer so the floating bar doesn't cover the last rows -->
+  <div style="height: 84px;"></div>
+
+  <!-- Floating Save Bar -->
+  <div class="floating-save-bar">
+    <div class="container d-flex align-items-center gap-3">
+      <button type="submit" class="btn btn-primary">Save</button>
+    </div>
+  </div>
+</form>
+
+<!-- Add Buyer Modal -->
+<div class="modal fade" id="addBuyerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form id="buyerForm" class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Add New Buyer</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="text" name="name" class="form-control mb-2" placeholder="Name">
+        <input type="text" name="nick_name" class="form-control mb-2" placeholder="Nick Name (shown in auction)">
+        <input type="text" name="location" class="form-control mb-2" placeholder="Location (Town/Market)">
+        <input type="text" name="address" class="form-control mb-2" placeholder="Address (optional)">
+        <input type="text" name="phone_number" class="form-control mb-2" placeholder="Phone (optional)">
+        <div id="buyerModalError" class="text-danger small" style="display:none;"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Add Buyer</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<style>
+  /* Floating save bar pinned at bottom, under Bootstrap modals (z-index 1050) */
+  .floating-save-bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: #fff;
+    border-top: 1px solid #dee2e6;
+    box-shadow: 0 -2px 6px rgba(0,0,0,0.05);
+    padding: 8px 0;
+    z-index: 1030;
+  }
+</style>
+
+<script>
+// Assumes Awesomplete is loaded globally (same as entry page)
+document.addEventListener("DOMContentLoaded", function () {
+  let buyersCache = [];
+  let lastFocusedLotId = null;  // track last-focused Buyer field
+
+  // preload buyers
+  function fetchBuyers(q="") {
+    const url = new URL("{{ url_for('main.api_buyers') }}", window.location.origin);
+    if (q) url.searchParams.set("q", q);
+    return fetch(url).then(r => r.json());
+  }
+
+  async function initBuyerPickers() {
+    buyersCache = await fetchBuyers("");
+
+    document.querySelectorAll(".buyer_search").forEach(inp => {
+      const lotId = inp.id.replace("buyer_input_", "");
+      const hidden = document.getElementById("buyer_id_" + lotId);
+
+      // remember last-focused
+      inp.addEventListener("focus", () => { lastFocusedLotId = lotId; });
+
+      const aw = new Awesomplete(inp, { minChars: 1, autoFirst: true });
+
+      function setList(q) {
+        const list = buyersCache
+          .filter(b => !q || b.label.toLowerCase().includes(q.toLowerCase()))
+          .map(b => b.label);
+        aw.list = list;
+      }
+      setList("");
+
+      // Prefill from id (if present)
+      const preId = inp.dataset.prefillId;
+      if (preId) {
+        const found = buyersCache.find(b => String(b.id) === String(preId));
+        if (found) { inp.value = found.label; hidden.value = found.id; }
+      }
+
+      // Type-ahead behavior (local + refresh)
+      inp.addEventListener("input", async function () {
+        const q = this.value.trim();
+        setList(q);
+        if (q.length) {
+          const server = await fetchBuyers(q);
+          server.forEach(s => { if (!buyersCache.find(b => b.id === s.id)) buyersCache.push(s); });
+          setList(q);
+        }
+        hidden.value = "";
+      });
+
+      inp.addEventListener("awesomplete-selectcomplete", e => {
+        const chosen = e.text.value || e.text;
+        const match = buyersCache.find(b => b.label === chosen);
+        hidden.value = match ? match.id : "";
+      });
+    });
+  }
+
+  // Modal: reset and clear errors on open
+  const addBuyerModal = document.getElementById("addBuyerModal");
+  addBuyerModal.addEventListener("show.bs.modal", () => {
+    document.getElementById("buyerForm").reset();
+    document.getElementById("buyerModalError").style.display = "none";
+  });
+
+  // Create buyer via POST /api/buyers, then apply to last-focused Buyer field
+// AJAX submit to keep scroll position + show toast
+document.getElementById("salesForm").addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  // Optional gentle warning (keeps partial-save behavior)
+  const warn = [...document.querySelectorAll(".buyer_search")].some(inp => {
+    const lotId = inp.id.replace("buyer_input_", "");
+    const hid = document.getElementById("buyer_id_" + lotId);
+    return (inp.value.trim().length > 0 && !hid.value);
+  });
+  if (warn && !confirm("Some Buyer fields aren’t selected. Continue and save only completed rows?")) {
+    return;
+  }
+
+  const form = e.target;
+  const formData = new FormData(form);
+  const res = await fetch(form.action, {
+    method: "POST",
+    headers: { "X-Requested-With": "fetch" }, // triggers JSON path in route
+    body: formData
+  });
+
+  try {
+    const data = await res.json();
+    // Toast
+
+    const body = document.getElementById("saveToastBody");
+body.textContent = data.message || `Saved ${ (data.created||0) + (data.updated||0) } sale(s): ${data.created||0} new, ${data.updated||0} updated.`;
+new bootstrap.Toast(document.getElementById("saveToast"), { delay: 2200 }).show();
+    
+    
+  } catch {
+    const body = document.getElementById("saveToastBody");
+    body.textContent = "Could not save. Please try again.";
+    const t = document.getElementById("saveToast");
+    t.classList.remove("bg-success"); t.classList.add("bg-danger");
+    new bootstrap.Toast(t, { delay: 2500 }).show();
+    setTimeout(() => { t.classList.remove("bg-danger"); t.classList.add("bg-success"); }, 2600);
+  }
+});
+
+  // Optional gentle check on submit; backend still allows partial saves
+  document.getElementById("salesForm").addEventListener("submit", function (e) {
+    const warn = [...document.querySelectorAll(".buyer_search")].some(inp => {
+      const lotId = inp.id.replace("buyer_input_", "");
+      const hid = document.getElementById("buyer_id_" + lotId);
+      return (inp.value.trim().length > 0 && !hid.value);
+    });
+    if (warn && !confirm("Some Buyer fields aren’t selected from the list. Continue and save only the completed rows?")) {
+      e.preventDefault();
+    }
+  });
+
+  initBuyerPickers();
+});
+</script>
+{% endblock %}

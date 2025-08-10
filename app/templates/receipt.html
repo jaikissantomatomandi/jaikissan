@@ -60,8 +60,13 @@
     </table>
 
     <table>
-      <tr><td>Total</td><td></td><td class="right">{{ total_jk }}</td><td class="right">{{ total_other }}</td></tr>
-      <tr><td colspan="3">Transport Cost</td><td class="right">₹{{ total_cost }}</td></tr>
+      <tr>
+        <td>Total</td>
+        <td>--------------</td>
+        <td class="right">{{ total_jk }}</td>
+        <td class="right">{{ total_other }}</td>
+      </tr>
+      <tr><td colspan="3">Rent ({{ total_jk  +  total_other }} Boxes)</td><td class="right">₹{{ total_cost }}</td></tr>
     </table>
 
     <br><br>
@@ -71,9 +76,47 @@
   </div>
 
   <!-- Future: Add farmer receipt here -->
+   <!-- Farmer Patti Section -->
   <div id="farmer-receipt" class="receipt-section">
-    <h3>Farmer Receipt Coming Soon</h3>
+    <style>
+      .receipt { page-break-after: always; min-height: 10cm; border: 2px solid #000; padding: 8px; display: flex; flex-direction: column; }
+    </style>
+
+    {% for fg in farmer_groups %}
+      <div class="receipt">
+        <h3>Jai Kissan</h3>
+        <table>
+          <tr><td>Patti #:</td><td class="right">{{ fg.farmer_patti_id }}</td></tr>
+          <tr><td>Farmer:</td><td class="right">{{ fg.farmer_name }}</td></tr>
+          <tr><td>Date:</td><td class="right">{{ patti.date }}</td></tr>
+        </table>
+
+        <table>
+          <thead>
+            <tr><th>Lot</th><th class="right">Boxes</th></tr>
+          </thead>
+          <tbody>
+            {% for row in fg.lots %}
+            <tr>
+              <td>{{ row.lot_number }}</td>
+              <td class="right">{{ row.boxes }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+
+        <table>
+          <tr><td>Total Boxes</td><td class="right">{{ fg.total }}</td></tr>
+        </table>
+
+        <br><br>
+        <table>
+          <tr><td>Farmer Sign</td><td class="right">Writer Sign</td></tr>
+        </table>
+      </div>
+    {% endfor %}
   </div>
+
 
   <script>
     function showAndPrint(type) {
