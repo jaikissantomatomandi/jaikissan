@@ -1,0 +1,128 @@
+/* ----- Layout ----- */
+:root {
+  --space-1: .5rem;
+  --space-2: .75rem;
+  --space-3: 1rem;
+  --radius: 12px;
+  --brand: #0f766e;
+}
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  font-size: 16px;               /* prevents iOS input zoom */
+  line-height: 1.35;
+  background: #fafafa;
+  color: #111;
+}
+
+.container {
+  max-width: 960px;              /* nice on desktop */
+  margin: 0 auto;
+  padding: var(--space-3);
+}
+
+/* ----- Cards ----- */
+.card {
+  background: #fff;
+  border-radius: var(--radius);
+  box-shadow: 0 1px 6px rgba(0,0,0,.08);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+/* ----- Forms ----- */
+label { display:block; margin-bottom: .35rem; font-weight: 600; }
+input, select, textarea {
+  width: 100%;
+  padding: .8rem .9rem;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 16px;
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(15,118,110,.15);
+}
+.form-row { display: grid; gap: var(--space-2); }
+@media (min-width: 700px) {
+  .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+  .form-row.cols-3 { grid-template-columns: 1fr 1fr 1fr; }
+}
+
+/* Inline button next to selects (for + Add) */
+.inline {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+/* ----- Buttons ----- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: .5rem;
+  padding: .9rem 1rem;
+  border: 0; border-radius: 999px;
+  background: var(--brand); color: #fff; font-weight: 600;
+  text-decoration: none; cursor: pointer;
+}
+.btn:active { transform: translateY(1px); }
+.btn.secondary { background: #111; }
+.btn.ghost { background: #fff; color: #111; border:1px solid #e5e7eb; }
+
+/* Sticky action bar (great for Submit / Print) */
+.sticky-actions {
+  position: sticky; bottom: 0; left: 0; right: 0;
+  padding: var(--space-2);
+  background: rgba(250,250,250,.85);
+  backdrop-filter: blur(6px);
+  display: grid; gap: var(--space-2);
+  grid-template-columns: 1fr;
+  border-top: 1px solid #eee;
+}
+@supports(padding: max(0px)) {
+  .sticky-actions { padding-bottom: max(var(--space-2), env(safe-area-inset-bottom)); }
+}
+@media (min-width: 480px) {
+  .sticky-actions { grid-template-columns: 1fr 1fr; }
+}
+
+/* ----- Tables → Mobile cards ----- */
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: .7rem; border-bottom: 1px dashed #ddd; text-align: left; }
+
+@media (max-width: 640px) {
+  table.responsive { display: block; }
+  table.responsive thead { display: none; }
+  table.responsive tbody { display: grid; gap: var(--space-2); }
+  table.responsive tr {
+    display: grid; gap: .35rem;
+    background: #fff; border:1px solid #eee; border-radius: var(--radius);
+    padding: var(--space-2);
+  }
+  table.responsive td { border: 0; padding: 0; }
+  table.responsive td::before {
+    content: attr(data-label);
+    display: block; font-size: .8rem; color:#6b7280; margin-bottom: .15rem;
+  }
+}
+
+@media (max-width: 576px) {
+  .btn { font-size: 0.9rem; padding: 0.5rem; }
+  .table td, .table th { font-size: 0.85rem; padding: 0.4rem; }
+  input, select { font-size: 16px !important; } /* prevent zoom on iOS */
+}
+
+/* ----- Utility ----- */
+.hidden { display:none !important; }
+.center { text-align:center; }
+.right { text-align:right; }
+.m-0 { margin:0; }
+.mt-1 { margin-top: var(--space-1); }
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }

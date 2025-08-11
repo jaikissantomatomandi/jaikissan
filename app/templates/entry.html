@@ -5,26 +5,31 @@
   <input type="hidden" name="date" id="form_date">
 
   <!-- Driver and Farmer Section -->
-<div class="mb-3 d-flex align-items-center">
-  <div class="flex-grow-1 me-2" style="flex: 3;">
-    <input id="driver_search" name="driver_name" class="form-control" placeholder="Start typing driver..." required style="width: 400px;" >
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">
-      Add Driver
-    </button>
-      <button type="button" class="btn btn-success ms-2" data-bs-toggle="modal" data-bs-target="#addFarmerModal">
-    Add Farmer
-  </button>
+<div class="row g-2 mb-3">
+  <div class="col-12 col-md-5">
+    <input id="driver_search" name="driver_name" class="form-control" placeholder="Start typing driver..." required>
+    <input type="hidden" name="driver_id" id="driver_id">
   </div>
-  <input type="hidden" name="driver_id" id="driver_id">
-  <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control me-2" placeholder="Transport Rate (₹/box)" required style="max-width: 180px;">
-  <input type="date" id="entry_date" class="form-control me-2" value="{{ today }}" required style="max-width: 180px;">
-
+  <div class="col-6 col-md-2 d-grid">
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">+ Driver</button>
+  </div>
+  <div class="col-6 col-md-2 d-grid">
+    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addFarmerModal">+ Farmer</button>
+  </div>
+  <div class="col-6 col-md-1">
+    <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control" placeholder="₹/box" required>
+  </div>
+  <div class="col-6 col-md-2">
+    <input type="date" id="entry_date" class="form-control" value="{{ today }}" required>
+  </div>
 </div>
 
 
+
   <!-- Lots Table -->
-  <table class="table table-bordered" id="lotsTable">
-    <thead>
+<div class="table-responsive">
+  <table class="table table-bordered align-middle" id="lotsTable">
+    <thead class="table-light">
       <tr>
         <th>Lot #</th><th>Farmer</th><th>JK</th><th>Other</th><th>+/-</th>
       </tr>
@@ -47,7 +52,7 @@
       </tr>
     </tbody>
   </table>
-
+</div>
   <button type="submit" class="btn btn-primary">Submit Entry</button>
 </form>
 
