@@ -1,63 +1,72 @@
 {% extends 'base.html' %}
 {% block content %}
 <h2>Driver Entry + Lots</h2>
+
 <form method="post" id="entryForm">
   <input type="hidden" name="date" id="form_date">
 
   <!-- Driver and Farmer Section -->
 <div class="row g-2 mb-3">
-  <div class="col-12 col-md-5">
-    <input id="driver_search" name="driver_name" class="form-control" placeholder="Start typing driver..." required>
+  <div class="col-12 col-md-7">
+    <input id="driver_search" name="driver_name" class="form-control"
+           placeholder="Tap to select driver…" required readonly>
     <input type="hidden" name="driver_id" id="driver_id">
   </div>
-  <div class="col-6 col-md-2 d-grid">
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addDriverModal">+ Driver</button>
-  </div>
-  <div class="col-6 col-md-2 d-grid">
-    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addFarmerModal">+ Farmer</button>
-  </div>
-  <div class="col-6 col-md-1">
+  <div class="col-6 col-md-2">
     <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control" placeholder="₹/box" required>
   </div>
-  <div class="col-6 col-md-2">
+  <div class="col-6 col-md-3">
     <input type="date" id="entry_date" class="form-control" value="{{ today }}" required>
   </div>
 </div>
 
 
-
   <!-- Lots Table -->
-<div class="table-responsive">
-  <table class="table table-bordered align-middle" id="lotsTable">
-    <thead class="table-light">
-      <tr>
-        <th>Lot #</th><th>Farmer</th><th>JK</th><th>Other</th><th>+/-</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td class="lot_number_cell">1</td>
-        <td>
-<div class="d-flex">
-  <input class="form-control farmer_search" name="farmer_name[]" required>
-  <input type="hidden" name="farmer_id[]" class="farmer_id">
-</div>
-        </td>
-        <td><input type="number" name="jk_boxes[]" class="form-control jk_boxes" min="0" required></td>
-        <td><input type="number" name="other_boxes[]" class="form-control other_boxes" min="0" required></td>
-        <td>
-          <button type="button" class="btn btn-warning add-row">➕</button>
-          <button type="button" class="btn btn-danger remove-row">✖</button>
-        </td>
-      </tr>
-    </tbody>
-  </table>
-</div>
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle" id="lotsTable">
+      <thead class="table-light">
+        <tr>
+          <th>Lot #</th><th>Farmer</th><th>JK</th><th>Other</th><th>+/-</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="lot-row">
+          <td class="lot_number_cell">1</td>
+          <td>
+            <div class="d-flex">
+              <input class="form-control farmer_search" name="farmer_name[]" placeholder="Tap to select farmer…" required readonly>
+              <input type="hidden" name="farmer_id[]" class="farmer_id">
+            </div>
+          </td>
+          <td><input type="number" name="jk_boxes[]" class="form-control jk_boxes" min="0" required></td>
+          <td><input type="number" name="other_boxes[]" class="form-control other_boxes" min="0" required></td>
+          <td>
+            <button type="button" class="btn btn-warning add-row">➕</button>
+            <button type="button" class="btn btn-danger remove-row">✖</button>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
   <button type="submit" class="btn btn-primary">Submit Entry</button>
 </form>
 
+<!-- Post-submit splash -->
+<div id="postSubmitSplash" class="splash-overlay" aria-modal="true" role="dialog">
+  <div class="splash-card">
+    <button class="splash-close" id="splashCloseBtn" aria-label="Close">✖</button>
+    <h3 class="splash-title">Entry saved</h3>
+    <p class="splash-sub">Choose what to print now. You can close this anytime.</p>
+    <div class="splash-actions">
+      <a id="printDriverBtn" class="btn btn-primary" target="_blank">🖨 Print Driver Patti</a>
+      <a id="printFarmerBtn" class="btn btn-outline-primary" target="_blank">🖨 Print Farmer Pattis</a>
+    </div>
+  </div>
+</div>
+
 <!-- Add Driver Modal -->
-<div class="modal fade" id="addDriverModal" ...>
+<div class="modal fade" id="addDriverModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
       <form method="post" action="/add_driver_modal">
@@ -98,6 +107,21 @@
   </div>
 </div>
 
+<!-- Smart Picker (AppSheet-style) -->
+<div id="smartPicker" class="picker-overlay" role="dialog" aria-modal="true">
+  <div class="picker-panel">
+    <div class="picker-header">
+      <input id="pickerSearch" type="text" autocomplete="off" placeholder="Search…">
+      <button id="pickerClose" class="picker-close" aria-label="Close">✖</button>
+    </div>
+    <div id="pickerList" class="picker-list"></div>
+    <div class="picker-footer">
+      <button id="pickerAddNew" class="btn btn-outline-secondary" style="display:none">+ Add New</button>
+      <button id="pickerCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <script>
 let lotPrefix = "";
 let lotCounter = 0;
@@ -112,7 +136,6 @@ function updateLotNumbers() {
 function fetchLotStartNumber() {
   const date = document.getElementById("entry_date").value;
   if (!date) return;
-
   fetch("/api/next_lot_number?date=" + encodeURIComponent(date))
     .then(res => res.json())
     .then(data => {
@@ -125,64 +148,151 @@ function fetchLotStartNumber() {
 document.addEventListener("DOMContentLoaded", function () {
   const form = document.getElementById("entryForm");
   const dateInput = document.getElementById("entry_date");
-  fetchLotStartNumber();
   document.getElementById("form_date").value = dateInput.value;
+  fetchLotStartNumber();
 
+  // Validate before submit
   form.addEventListener("submit", function (e) {
     if (!document.getElementById("driver_id").value) {
-      alert("Please select a valid Driver from the dropdown.");
-      e.preventDefault();
-      return;
+      alert("Please select a valid Driver.");
+      e.preventDefault(); return;
     }
     const invalidFarmer = [...document.querySelectorAll(".farmer_id")].some(fid => !fid.value);
     if (invalidFarmer) {
-      alert("Please select a valid Farmer from the dropdown.");
-      e.preventDefault();
-      return;
+      alert("Please select a valid Farmer for all rows.");
+      e.preventDefault(); return;
     }
     document.getElementById("form_date").value = dateInput.value;
   });
 
   dateInput.addEventListener("change", fetchLotStartNumber);
 
-  function setupLotRow(row) {
-    const farmerInput = row.querySelector(".farmer_search");
-    const farmerIdInput = row.querySelector(".farmer_id");
-    let farmerMap = {};
-    const aw = new Awesomplete(farmerInput, { minChars: 1, autoFirst: true });
+  // ---- Smart Picker (Driver & Farmer) ----
+  const $ = s => document.querySelector(s);
+  const debounce = (fn, ms=200) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a),ms)} };
 
-    farmerInput.addEventListener("input", function () {
-      fetch("/api/farmers?q=" + encodeURIComponent(this.value))
-        .then(res => res.json())
-        .then(data => {
-          farmerMap = {};
-          aw.list = data.map(f => {
-            const label = `${f.name} (${f.phone || ''})`;
-            farmerMap[label] = f;
-            return label;
-          });
-        });
-    });
+  const overlay = $("#smartPicker"), inp = $("#pickerSearch"),
+        list = $("#pickerList"), btnClose = $("#pickerClose"),
+        btnCancel = $("#pickerCancel"), btnAddNew = $("#pickerAddNew");
+  let state = { type:null, onSelect:null, items:[], active:-1 };
 
-    farmerInput.addEventListener("awesomplete-selectcomplete", function (e) {
-      const selected = farmerMap[e.text.value];
-      if (selected) {
-        farmerIdInput.value = selected.id;
-      }
+  function labelFor(item){
+    return state.type==="driver"
+      ? `${item.name}${item.vehicle_number ? " ("+item.vehicle_number+")":""}`
+      : `${item.name}${item.phone ? " ("+item.phone+")":""}`;
+  }
+  function render(items){
+    list.innerHTML="";
+    items.forEach((it,idx)=>{
+      const div=document.createElement("div");
+      div.className="picker-item" + (idx===state.active?" active":"");
+      div.tabIndex=0;
+      div.dataset.index=idx;
+      div.innerHTML = `<strong>${labelFor(it)}</strong>` + (state.type==="driver" ? "" : (it.phone? `<span class="picker-sub">${it.phone}</span>`:""));
+      div.addEventListener("click",()=>choose(idx));
+      list.appendChild(div);
     });
   }
+  const fetchResults = debounce(q=>{
+    const url = state.type==="driver" ? `/api/drivers?q=${encodeURIComponent(q)}`
+                                      : `/api/farmers?q=${encodeURIComponent(q)}`;
+    fetch(url).then(r=>r.json()).then(arr=>{
+      state.items = arr || [];
+      state.active = state.items.length ? 0 : -1;
+      render(state.items);
+    });
+  }, 150);
 
-  const firstRow = document.querySelector("#lotsTable tbody tr");
-  setupLotRow(firstRow);
+  function openPicker({type, initial="", onSelect}){
+    state = { type, onSelect, items:[], active:-1 };
+    overlay.style.display = "block";
+    btnAddNew.style.display = "none";
+    btnAddNew.onclick = () => {
+      overlay.style.display="none";
+      if(type==="farmer"){
+        const m = document.getElementById("addFarmerModal");
+        if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
+        else location.href="/add_farmer_modal";
+      } else {
+        const m = document.getElementById("addDriverModal");
+        if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
+        else location.href="/add_driver";
+      }
+    };
+    inp.value = initial || "";
+    inp.placeholder = type==="driver" ? "Search driver (name or vehicle)…" : "Search farmer (name or phone)…";
+    render([]);
+    setTimeout(()=>{ inp.focus(); fetchResults(inp.value); }, 10);
+  }
+  function closePicker(){ overlay.style.display="none"; state.onSelect=null; }
+  function choose(idx){
+    const item = state.items[idx];
+    if(!item || !state.onSelect) return;
+    state.onSelect(item); closePicker();
+  }
 
+  btnClose.onclick = closePicker;
+  btnCancel.onclick = closePicker;
+  inp.addEventListener("input", e=> fetchResults(e.target.value));
+  overlay.addEventListener("keydown", e=>{
+    if(e.key==="Escape"){ e.preventDefault(); closePicker(); }
+    else if(e.key==="ArrowDown"){ e.preventDefault(); state.active=Math.min(state.active+1, state.items.length-1); render(state.items); scrollActive(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); state.active=Math.max(state.active-1, 0); render(state.items); scrollActive(); }
+    else if(e.key==="Enter"){ e.preventDefault(); if(state.active>=0) choose(state.active); }
+  });
+  function scrollActive(){
+    const el = list.querySelector(".picker-item.active");
+    if(el) el.scrollIntoView({block:"nearest"});
+  }
+
+  // Hook driver input to picker
+  const driverInput = document.getElementById("driver_search");
+  const driverIdInput = document.getElementById("driver_id");
+  const rateInput = document.getElementById("transport_rate");
+  driverInput.addEventListener("focus", () => {
+    openPicker({
+      type:"driver",
+      initial: driverInput.value,
+      onSelect: d => {
+        driverInput.value = `${d.name}${d.vehicle_number? " ("+d.vehicle_number+")":""}`;
+        driverIdInput.value = d.id;
+        rateInput.value = d.default_rate || "";
+      }
+    });
+  });
+  // Also open on click (mobile)
+  driverInput.addEventListener("click", () => driverInput.dispatchEvent(new Event("focus")));
+
+  // Per-row farmer picker
+  window.setupLotRow = function(row){
+    const fInput = row.querySelector(".farmer_search");
+    const fId = row.querySelector(".farmer_id");
+    if(!fInput || !fId) return;
+    fInput.placeholder = "Tap to select farmer…";
+    fInput.readOnly = true;
+    const open = () => openPicker({
+      type:"farmer",
+      initial: fInput.value,
+      onSelect: f => { fInput.value = `${f.name}${f.phone? " ("+f.phone+")":""}`; fId.value = f.id; }
+    });
+    fInput.addEventListener("focus", open);
+    fInput.addEventListener("click", open);
+  };
+
+  // Initialize first row
+  const firstRow = document.querySelector("#lotsTable tbody tr.lot-row");
+  if(firstRow) window.setupLotRow(firstRow);
+
+  // Add / remove rows
   document.querySelector("#lotsTable").addEventListener("click", function (e) {
     if (e.target.classList.contains("add-row")) {
       const row = e.target.closest("tr");
       const newRow = row.cloneNode(true);
+      newRow.classList.add("lot-row");
       newRow.querySelectorAll("input").forEach(input => input.value = "");
       newRow.querySelector(".lot_number_cell").textContent = "";
       row.after(newRow);
-      setupLotRow(newRow);
+      window.setupLotRow(newRow);
       updateLotNumbers();
     } else if (e.target.classList.contains("remove-row")) {
       const row = e.target.closest("tr");
@@ -194,32 +304,68 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   });
 
-  const driverInput = document.getElementById("driver_search");
-  const driverIdInput = document.getElementById("driver_id");
-  const rateInput = document.getElementById("transport_rate");
-  let driverMap = {};
-  const awDriver = new Awesomplete(driverInput, { minChars: 1, autoFirst: true });
+  // --- Post-submit splash ---
+  const params = new URLSearchParams(location.search);
+  const pattiId = params.get("patti_id");
+  const overlaySplash = document.getElementById("postSubmitSplash");
+  const closeBtn = document.getElementById("splashCloseBtn");
+  const driverBtn = document.getElementById("printDriverBtn");
+  const farmerBtn = document.getElementById("printFarmerBtn");
 
-  driverInput.addEventListener("input", function () {
-    fetch("/api/drivers?q=" + encodeURIComponent(this.value))
-      .then(res => res.json())
-      .then(data => {
-        driverMap = {};
-        awDriver.list = data.map(d => {
-          const label = `${d.name} (${d.vehicle_number})`;
-          driverMap[label] = d;
-          return label;
-        });
-      });
-  });
-
-  driverInput.addEventListener("awesomplete-selectcomplete", function (e) {
-    const selected = driverMap[e.text.value];
-    if (selected) {
-      driverIdInput.value = selected.id;
-      rateInput.value = selected.default_rate || "";
-    }
-  });
+  if (pattiId && overlaySplash && driverBtn && farmerBtn) {
+    driverBtn.href = `/receipt/driver_patti/${pattiId}`;
+    farmerBtn.href = `/receipt/farmer_pattis/${pattiId}`;
+    overlaySplash.style.display = "flex";
+    closeBtn.addEventListener("click", () => { overlaySplash.style.display = "none"; });
+    try {
+      const cleanUrl = location.pathname + (function(){
+        const p = new URLSearchParams(location.search);
+        p.delete("patti_id");
+        const q = p.toString();
+        return q ? `?${q}` : "";
+      })();
+      history.replaceState(null, "", cleanUrl);
+    } catch(e) {}
+  }
 });
 </script>
+
+<style>
+  /* Splash overlay */
+  .splash-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    display: none; align-items: center; justify-content: center;
+    z-index: 2000;
+  }
+  .splash-card {
+    width: min(92vw, 520px);
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 12px 40px rgba(0,0,0,0.25);
+    padding: 20px 20px 16px; position: relative;
+  }
+  .splash-close { position: absolute; top: 10px; right: 10px; border: 0; background: transparent; font-size: 20px; line-height: 1; cursor: pointer; }
+  .splash-title { margin: 0 28px 6px 0; font-size: 18px; font-weight: 600; }
+  .splash-sub { margin: 0 28px 12px 0; color: #6c757d; font-size: 14px; }
+  .splash-actions { display: grid; gap: 10px; margin-top: 8px; }
+  @media (min-width: 480px) { .splash-actions { grid-template-columns: 1fr 1fr; } }
+
+  /* Table: avoid inner scrollbars & clipping on mobile */
+  .table-responsive { overflow-y: visible !important; }
+  #lotsTable { table-layout: fixed; }
+  #lotsTable th, #lotsTable td { white-space: nowrap; }
+
+  /* Smart Picker overlay (AppSheet-style) */
+  .picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:3000}
+  .picker-panel{position:absolute;inset:6vh 4vw;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;flex-direction:column}
+  .picker-header{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #e5e7eb}
+  .picker-header input{flex:1;padding:10px 12px;border:1px solid #ced4da;border-radius:8px;font-size:16px}
+  .picker-close{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer}
+  .picker-list{overflow:auto;max-height:60vh}
+  .picker-item{padding:12px 16px;border-bottom:1px solid #f1f3f5;cursor:pointer}
+  .picker-item:hover,.picker-item.active{background:#f5f9ff}
+  .picker-sub{color:#6c757d;font-size:13px;margin-left:6px}
+  .picker-footer{display:flex;gap:10px;justify-content:flex-end;padding:10px 12px;border-top:1px solid #e5e7eb}
+  @media(min-width:768px){.picker-panel{inset:10vh calc(50vw - 320px)}}
+</style>
 {% endblock %}

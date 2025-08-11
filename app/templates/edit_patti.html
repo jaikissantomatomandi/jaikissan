@@ -2,56 +2,83 @@
 {% block content %}
 <h2>Edit Driver Patti #{{ patti.id }}</h2>
 
-<form method="POST" action="/update_driver_patti/{{ patti.id }}" class="mb-4">
-  <div class="mb-3 d-flex align-items-center">
-    <input class="form-control me-2" value="{{ patti.driver_name }}" readonly style="width: 300px;">
-    <input type="date" name="date" value="{{ patti.patti_date }}" class="form-control me-2" style="max-width: 180px;">
-    <input type="number" step="0.1" name="transport_rate" value="{{ patti.patti_rate }}" class="form-control me-2" placeholder="Transport Rate (₹/box)" style="max-width: 180px;">
-    <button type="submit" class="btn btn-primary">Update Patti</button>
+<form method="POST" action="{{ url_for('main.edit_patti', patti_id=patti.id) }}">
+
+  <!-- Patti header -->
+  <div class="mb-4 d-flex align-items-center flex-wrap gap-2">
+    <input class="form-control" value="{{ patti.driver_name }}" readonly style="max-width: 300px;">
+    <input type="date" name="date" value="{{ patti.patti_date }}" class="form-control" style="max-width: 180px;">
+    <input type="number" step="0.1" name="transport_rate" id="transport_rate"
+           value="{{ patti.patti_rate }}" class="form-control" placeholder="Transport Rate (₹/box)" style="max-width: 200px;">
   </div>
+
+  <!-- Lots table -->
+  <div class="table-responsive">
+    <table class="table table-bordered align-middle">
+      <thead>
+        <tr>
+          <th>Farmer</th>
+          <th>Lot No</th>
+          <th>JK</th>
+          <th>Other</th>
+          <th>Total</th>
+          <th>Amount (₹)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for lot in lots %}
+        <tr>
+          <!-- keep ids paired with row via lot_id[] -->
+          <input type="hidden" name="lot_id[]" value="{{ lot.lot_id }}">
+          <td><input type="text" class="form-control" value="{{ lot.farmer_name }}" readonly></td>
+          <td><input type="text" name="lot_number[]" class="form-control" value="{{ lot.lot_number }}"></td>
+          <td><input type="number" name="jk_boxes[]" class="form-control jk_boxes" value="{{ lot.jk_boxes }}"></td>
+          <td><input type="number" name="other_boxes[]" class="form-control other_boxes" value="{{ lot.other_boxes }}"></td>
+          <td><input type="text" class="form-control total_boxes" value="{{ (lot.jk_boxes or 0) + (lot.other_boxes or 0) }}" readonly></td>
+          <td><input type="text" class="form-control total_amount" value="{{ ((lot.jk_boxes or 0) + (lot.other_boxes or 0)) * (patti.patti_rate or 0) }}" readonly></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <button type="submit" class="btn btn-primary">Save changes</button>
+  <a href="{{ url_for('main.show_lots', date=patti.patti_date) }}" class="btn btn-outline-secondary ms-2">Cancel</a>
+  <div class="mt-3">
+<a href="{{ url_for('main.driver_patti_receipt', patti_id=patti.id) }}" 
+   class="btn btn-secondary" target="_blank">
+  🖨 Print Driver Patti
+  </a>
+  <a href="{{ url_for('main.farmer_patti_receipts', driver_patti_id=patti.id) }}" 
+     class="btn btn-secondary" target="_blank">
+    🖨 Print Farmer Patti
+  </a>
+</div>
 </form>
 
-<table class="table table-bordered">
-  <thead>
-    <tr>
-      <th>Farmer</th><th>Lot No</th><th>JK</th><th>Other</th><th>Total</th><th>Amount</th><th>Save</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for lot in lots %}
-    <tr>
-      <form method="POST" action="/update_lot/{{ lot.lot_id }}">
-        <td><input type="text" name="farmer_name" class="form-control" value="{{ lot.farmer_name }}"></td>
-        <td><input type="text" name="lot_number" class="form-control" value="{{ lot.lot_number }}"></td>
-        <td><input type="number" name="jk_boxes" class="form-control jk_boxes" value="{{ lot.jk_boxes }}"></td>
-        <td><input type="number" name="other_boxes" class="form-control other_boxes" value="{{ lot.other_boxes }}"></td>
-        <td><input type="text" class="form-control total_boxes" readonly value="{{ lot.jk_boxes + lot.other_boxes }}"></td>
-        <td><input type="text" class="form-control total_amount" readonly value="{{ (lot.jk_boxes + lot.other_boxes) * patti.patti_rate }}"></td>
-        <td><button type="submit" class="btn btn-success">💾</button></td>
-      </form>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-
 <script>
-  const pattiRate = parseFloat({{ patti.patti_rate }});
-  document.querySelectorAll("form").forEach(form => {
-    const jk = form.querySelector('[name="jk_boxes"]');
-    const other = form.querySelector('[name="other_boxes"]');
-    const totalBoxes = form.querySelector(".total_boxes");
-    const totalAmount = form.querySelector(".total_amount");
+  function recalcRow(row, rate) {
+    const jk = row.querySelector('.jk_boxes');
+    const other = row.querySelector('.other_boxes');
+    const totalBoxes = row.querySelector('.total_boxes');
+    const totalAmount = row.querySelector('.total_amount');
 
-    function update() {
-      const jkVal = parseInt(jk?.value || 0);
-      const otherVal = parseInt(other?.value || 0);
-      const total = jkVal + otherVal;
-      totalBoxes.value = total;
-      totalAmount.value = (total * pattiRate).toFixed(2);
-    }
+    const jkVal = parseInt(jk?.value || 0, 10);
+    const otherVal = parseInt(other?.value || 0, 10);
+    const total = jkVal + otherVal;
+    totalBoxes.value = total;
+    totalAmount.value = (total * rate).toFixed(2);
+  }
 
-    jk?.addEventListener("input", update);
-    other?.addEventListener("input", update);
+  function recalcAll() {
+    const rate = parseFloat(document.getElementById('transport_rate').value || 0);
+    document.querySelectorAll('tbody tr').forEach(tr => recalcRow(tr, rate));
+  }
+
+  // Live updates on quantity/rate changes
+  document.querySelectorAll('.jk_boxes, .other_boxes').forEach(inp => {
+    inp.addEventListener('input', recalcAll);
   });
+  document.getElementById('transport_rate').addEventListener('input', recalcAll);
 </script>
 {% endblock %}

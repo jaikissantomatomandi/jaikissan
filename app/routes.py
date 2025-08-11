@@ -341,7 +341,7 @@ def entry():
             print("Farmer Patti insert error:", e)
 
     db_conn.commit()
-    return redirect(url_for("main.entry"))
+    return redirect(url_for("main.entry", patti_id=driver_patti_id))
 
 
 @main.route("/api/next_lot_number")
@@ -432,27 +432,77 @@ def farmer_patti_receipts(driver_patti_id):
     db = get_db_connection()
     cur = db.cursor()
 
-    # Get all lots for this patti with farmer info
-    lots = cur.execute("""
-        SELECT li.lot_number, li.jk_boxes, li.other_boxes, dp.date, f.name as farmer_name, f.id as farmer_id
+    rows = cur.execute("""
+        SELECT 
+            li.lot_number,
+            COALESCE(li.jk_boxes, 0) AS jk_boxes,
+            COALESCE(li.other_boxes, 0) AS other_boxes,
+            dp.date,
+            d.village,                         -- from driver table
+            f.name AS farmer_name,
+            f.id   AS farmer_id,
+            fp.id  AS farmer_patti_id          -- from farmer_patti table
         FROM lot_info li
         JOIN driver_patti dp ON li.driver_patti_id = dp.id
-        JOIN farmer f ON f.id = li.farmer_id
+        JOIN driver d       ON dp.driver_id = d.id
+        JOIN farmer f       ON f.id = li.farmer_id
+        LEFT JOIN farmer_patti fp 
+               ON fp.driver_patti_id = li.driver_patti_id 
+              AND fp.farmer_id       = li.farmer_id
         WHERE li.driver_patti_id = ?
         ORDER BY f.name, li.lot_number
     """, (driver_patti_id,)).fetchall()
 
-    # Group lots by farmer
-    from collections import defaultdict
-    farmer_lots = defaultdict(list)
-    for lot in lots:
-        farmer_lots[lot["farmer_id"]].append(lot)
+    # Group: one record per farmer with metadata + lots
+    farmer_lots = {}
+    for r in rows:
+        fid = r["farmer_id"]
+        if fid not in farmer_lots:
+            farmer_lots[fid] = {
+                "farmer_name": r["farmer_name"],
+                "village": r["village"],
+                "farmer_patti_id": r["farmer_patti_id"],
+                "date": r["date"],
+                "lots": []
+            }
+        farmer_lots[fid]["lots"].append(r)
 
-    return render_template("farmer_receipts.html", farmer_lots=farmer_lots)
+    return render_template("farmer_patti_receipt.html", farmer_lots=farmer_lots)
 
-@main.route("/edit_patti/<int:patti_id>")
+
+@main.route("/edit_patti/<int:patti_id>", methods=["GET", "POST"])
 def edit_patti(patti_id):
     conn = get_db_connection()
+    if request.method == "POST":
+        # --- Update patti header ---
+        date_val = request.form.get("date")
+        rate_val = float(request.form.get("transport_rate") or 0)
+        conn.execute(
+            "UPDATE driver_patti SET date = ?, transport_rate = ? WHERE id = ?",
+            (date_val, rate_val, patti_id),
+        )
+
+        # --- Update all lots in one go ---
+        lot_ids = request.form.getlist("lot_id[]")
+        lot_numbers = request.form.getlist("lot_number[]")
+        jk_list = request.form.getlist("jk_boxes[]")
+        other_list = request.form.getlist("other_boxes[]")
+
+        for lot_id, lot_no, jk, ot in zip(lot_ids, lot_numbers, jk_list, other_list):
+            jk_i = int(jk or 0)
+            ot_i = int(ot or 0)
+            conn.execute("""
+                UPDATE lot_info
+                SET lot_number = ?, jk_boxes = ?, other_boxes = ?
+                WHERE id = ?
+            """, (lot_no.strip(), jk_i, ot_i, int(lot_id)))
+
+        conn.commit()
+        conn.close()
+        flash("Driver Patti and lots updated.")
+        return redirect(url_for("main.edit_patti", patti_id=patti_id))
+
+    # --- GET flow (unchanged) ---
     patti = conn.execute("""
         SELECT dp.id, dp.date AS patti_date, dp.transport_rate AS patti_rate, d.name AS driver_name
         FROM driver_patti dp
@@ -465,26 +515,11 @@ def edit_patti(patti_id):
         FROM lot_info li
         LEFT JOIN farmer f ON li.farmer_id = f.id
         WHERE li.driver_patti_id = ?
+        ORDER BY li.lot_number
     """, (patti_id,)).fetchall()
 
     conn.close()
     return render_template("edit_patti.html", patti=patti, lots=lots)
-
-
-@main.route("/update_driver_patti/<int:patti_id>", methods=['POST'])
-def update_driver_patti(patti_id):
-    date = request.form.get('date')
-    transport_rate = request.form.get('transport_rate')
-
-    conn = get_db_connection()
-    conn.execute("""
-        UPDATE driver_patti SET date = ?, transport_rate = ? WHERE id = ?
-    """, (date, transport_rate, patti_id))
-    conn.commit()
-    conn.close()
-
-    flash("Driver Patti updated.")
-    return redirect(url_for('main.edit_patti', patti_id=patti_id))
 
 @main.route("/update_lot/<int:lot_id>", methods=["POST"])
 def update_lot(lot_id):
@@ -528,7 +563,7 @@ def show_lots():
         JOIN driver d ON dp.driver_id = d.id
         JOIN farmer f ON l.farmer_id = f.id
         WHERE dp.date = ?
-        ORDER BY dp.date DESC, l.lot_number ASC
+        ORDER BY dp.id ASC, l.lot_number ASC
     """, (selected_date,)).fetchall()
     conn.close()
 
@@ -753,3 +788,38 @@ def sales():
 
     conn.close()
     return render_template("sales.html", date_val=date_val, lots=lots, sales_map=sales_map)
+
+
+@main.route("/receipt/driver_patti/<int:patti_id>")
+def driver_patti_receipt(patti_id):
+    db = get_db_connection()
+    cur = db.cursor()
+
+    patti = cur.execute("""
+        SELECT dp.id, dp.date, d.name AS driver_name, d.vehicle_number, d.village, dp.transport_rate
+        FROM driver_patti dp
+        JOIN driver d ON d.id = dp.driver_id
+        WHERE dp.id = ?
+    """, (patti_id,)).fetchone()
+
+    lots = cur.execute("""
+        SELECT li.lot_number, f.name AS farmer_name, li.jk_boxes, li.other_boxes
+        FROM lot_info li
+        JOIN farmer f ON f.id = li.farmer_id
+        WHERE li.driver_patti_id = ?
+        ORDER BY li.lot_number
+    """, (patti_id,)).fetchall()
+
+    total_jk = sum(int(l["jk_boxes"] or 0) for l in lots)
+    total_other = sum(int(l["other_boxes"] or 0) for l in lots)
+    total_cost = (total_jk + total_other) * float(patti["transport_rate"])
+
+    db.close()
+    return render_template(
+        "driver_patti_receipt.html",
+        patti=patti,
+        lots=lots,
+        total_jk=total_jk,
+        total_other=total_other,
+        total_cost=total_cost
+    )

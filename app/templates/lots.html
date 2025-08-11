@@ -1,6 +1,19 @@
 {% extends 'base.html' %}
 {% block content %}
-
+<style>
+  /* highlight the first row of each patti group */
+  .patti-start td {
+    border-top: 3px solid #0d6efd;   /* bootstrap primary */
+    background: #f8f9ff;             /* very light tint */
+  }
+  .patti-start td:first-child a {
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .patti-start td:first-child a:hover {
+    text-decoration: underline;
+  }
+</style>
 <h2 class="mb-4">All Lot Entries</h2>
 
 <form method="get" class="row g-3 align-items-end mb-4">
@@ -28,25 +41,43 @@
         <th scope="col">Total Amount (₹)</th>
       </tr>
     </thead>
-    <tbody>
-      {% for row in lots %}
-      <tr>
-        <td>{{ row.driver_patti_id }}</td>
-        <td>{{ row.lot_number }}</td>
-        <td>{{ row.driver_name }}</td>
-        <td>{{ row.village }}</td>
-        <td>{{ row.farmer_name }}</td>
-        <td>{{ row.jk_boxes }}</td>
-        <td>{{ row.other_boxes }}</td>
-        <td>₹{{ "%.2f"|format(row.transport_rate) }}</td>
-        <td><strong>₹{{ "%.2f"|format(row.total_amount) }}</strong></td>
-      </tr>
-      {% else %}
-      <tr>
-        <td colspan="9" class="text-center text-muted">No lots found for selected date.</td>
-      </tr>
-      {% endfor %}
-    </tbody>
+<tbody>
+  {% set ns = namespace(last=None) %}
+  {% for row in lots %}
+    {% set new_group = (row.driver_patti_id != ns.last) %}
+    <tr class="{% if new_group %}patti-start{% endif %}">
+      <!-- Driver Patti ID (only on first row of each group) -->
+      <td>
+        {% if new_group %}
+          <a href="{{ url_for('main.edit_patti', patti_id=row.driver_patti_id) }}">
+            {{ row.driver_patti_id }}
+          </a>
+        {% endif %}
+      </td>
+
+      <!-- Lot No (always) -->
+      <td>{{ row.lot_number }}</td>
+
+      <!-- Driver Name (only on first row of each group) -->
+      <td>{% if new_group %}{{ row.driver_name }}{% endif %}</td>
+
+      <!-- Rest (always) -->
+      <td>{{ row.village }}</td>
+      <td>{{ row.farmer_name }}</td>
+      <td>{{ row.jk_boxes }}</td>
+      <td>{{ row.other_boxes }}</td>
+      <td>₹{{ "%.2f"|format(row.transport_rate) }}</td>
+      <td><strong>₹{{ "%.2f"|format(row.total_amount) }}</strong></td>
+    </tr>
+    {% set ns.last = row.driver_patti_id %}
+  {% else %}
+    <tr>
+      <td colspan="9" class="text-center text-muted">No lots found for selected date.</td>
+    </tr>
+  {% endfor %}
+</tbody>
+
+
   </table>
 </div>
 
