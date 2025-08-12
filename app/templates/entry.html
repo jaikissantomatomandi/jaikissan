@@ -184,6 +184,8 @@ document.addEventListener("DOMContentLoaded", function () {
         list = $("#pickerList"), btnClose = $("#pickerClose"),
         btnCancel = $("#pickerCancel"), btnAddNew = $("#pickerAddNew");
   let state = { type:null, onSelect:null, items:[], active:-1 };
+  let lastPickerContext = null; // remember which picker opened (driver/farmer)
+
 
   function labelFor(item){
     return state.type==="driver"
@@ -218,6 +220,7 @@ const fetchResults = debounce(q=>{
   }, 150);
 
   function openPicker({type, initial="", onSelect}){
+    lastPickerContext = { type, onSelect };
   state = { type, onSelect, items:[], active:-1 };
   overlay.style.display = "block";
 
@@ -356,7 +359,141 @@ const fetchResults = debounce(q=>{
       history.replaceState(null, "", cleanUrl);
     } catch(e) {}
   }
+  // ===== AJAX submit for Add Driver / Add Farmer (no page reset) =====
+// ===== Robust AJAX submit for Add Driver (handles JSON or redirect/HTML) =====
+// ===== Robust AJAX submit for Add Driver (aliases + better errors) =====
+// === Mirror of Farmer handler, for Driver ===
+const addDriverForm = document.querySelector('#addDriverModal form');
+if (addDriverForm) {
+  addDriverForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    const submitBtn = formEl.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      const fd = new FormData(formEl);
+      const nameJustAdded = (fd.get('name') || '').trim();
+      const vehicleJustAdded = (fd.get('vehicle_number') || '').trim();
+
+      // 1) POST; accept 2xx/3xx like Farmer
+      const res = await fetch(formEl.action, { method: 'POST', body: fd });
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      // 2) If JSON, use it; else fallback to lookup — exactly like Farmer
+      let data = null;
+      const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        data = await res.json(); // {id, name, vehicle_number?, default_rate?}
+      } else {
+        // same-style lookup: by name first, then name+vehicle
+        const q1 = nameJustAdded;
+        const q2 = [nameJustAdded, vehicleJustAdded].filter(Boolean).join(' ');
+        // cache-bust to avoid stale lists
+        const bust = `&_t=${Date.now()}`;
+        let list = await fetch(`/api/drivers?q=${encodeURIComponent(q1)}${bust}`).then(r=>r.json()).catch(()=>[]);
+        if (!Array.isArray(list) || list.length === 0) {
+          list = await fetch(`/api/drivers?q=${encodeURIComponent(q2)}${bust}`).then(r=>r.json()).catch(()=>[]);
+        }
+        const lower = s => (s||'').toLowerCase().trim();
+        data = (list || []).find(d => lower(d.name ?? d.driver_name) === lower(nameJustAdded))
+            || (list || [])[0];
+        if (!data) throw new Error('Added but lookup failed');
+      }
+
+      // 3) Normalize, same idea as Farmer
+      const d = {
+        id: data.id ?? data.driver_id,
+        name: data.name ?? data.driver_name ?? nameJustAdded,
+        vehicle_number: data.vehicle_number ?? data.vehicle ?? data.vno ?? vehicleJustAdded ?? '',
+        default_rate: data.default_rate ?? data.rate ?? data.transport_rate ?? ''
+      };
+
+      // 4) Close modal + apply selection (same as Farmer)
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('addDriverModal')).hide();
+
+      if (lastPickerContext?.type === 'driver' && typeof lastPickerContext.onSelect === 'function') {
+        lastPickerContext.onSelect(d);
+      } else {
+        document.getElementById('driver_search').value =
+          `${d.name}${d.vehicle_number ? ' ('+d.vehicle_number+')' : ''}`;
+        document.getElementById('driver_id').value = d.id;
+        if (d.default_rate) document.getElementById('transport_rate').value = d.default_rate;
+      }
+
+      formEl.reset();
+    } catch (err) {
+      console.error('Add Driver error:', err);
+      alert('Could not add Driver');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+const addFarmerForm = document.querySelector('#addFarmerModal form');
+if (addFarmerForm) {
+  addFarmerForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formEl = e.currentTarget;
+    const submitBtn = formEl.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+
+    try {
+      const fd = new FormData(formEl);
+      const nameJustAdded = (fd.get('name') || '').trim();
+
+      const res = await fetch(formEl.action, { method: 'POST', body: fd });
+      // accept 2xx and 3xx as success
+      if (res.status < 200 || res.status >= 400) {
+        throw new Error(`HTTP ${res.status}`);
+      }
+
+      // try JSON first
+      let data = null;
+      const ct = (res.headers.get('Content-Type') || '').toLowerCase();
+      if (ct.includes('application/json')) {
+        data = await res.json();
+      } else {
+        // fallback: lookup by name we just added
+        const lookup = await fetch(`/api/farmers?q=${encodeURIComponent(nameJustAdded)}`)
+                              .then(r => r.json())
+                              .catch(() => []);
+        // pick exact-name match or first result
+        data = lookup.find(f => (f.name || '').toLowerCase() === nameJustAdded.toLowerCase()) || lookup[0];
+        if (!data) throw new Error('Added but lookup failed');
+      }
+
+      // Close modal
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('addFarmerModal')).hide();
+
+      // Normalize fields
+      const f = {
+        id: data.id ?? data.farmer_id,
+        name: data.name ?? data.farmer_name ?? nameJustAdded,
+        phone: data.phone ?? data.mobile ?? ''
+      };
+
+      // Apply into the picker target row
+      if (lastPickerContext?.type === 'farmer' && typeof lastPickerContext.onSelect === 'function') {
+        lastPickerContext.onSelect(f);
+      }
+      formEl.reset();
+    } catch (err) {
+      console.error('Add Farmer error:', err);
+      alert('Could not add Farmer');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+}
+
+
 });
+
+
 </script>
 
 <style>

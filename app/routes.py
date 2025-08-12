@@ -823,3 +823,242 @@ def driver_patti_receipt(patti_id):
         total_other=total_other,
         total_cost=total_cost
     )
+
+from flask import Blueprint, render_template, request, make_response
+from datetime import datetime, timedelta
+import csv, io
+
+# If you already have `main = Blueprint("main", __name__)` in routes.py, reuse it.
+# Otherwise, uncomment below to create a standalone blueprint and register in app factory.
+# main = Blueprint("main", __name__)
+
+
+
+@main.route("/reports")
+def reports_home():
+    now = datetime.now()
+    default_date = (now.date() if now.hour < 10 else (now.date() + timedelta(days=1))).strftime("%Y-%m-%d")
+    return render_template("reports_home.html", default_date=default_date)
+
+@main.route("/reports/day-sheet")
+def report_day_sheet():
+    date_str = request.args.get("date", "")
+    rows = []
+    totals = {"boxes": 0, "less": 0, "net_boxes": 0, "gross": 0}
+
+    if not date_str:
+        return render_template("day_sheet.html", date_str=date_str, rows=rows, totals=totals)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    sql = """
+    SELECT
+        li.lot_number                                 AS lot_number,
+        COALESCE(li.jk_boxes, 0) + COALESCE(li.other_boxes, 0) AS boxes,
+        COALESCE(s.less, 0)                           AS less,
+        COALESCE(s.rate, 0)                           AS rate,
+        b.name                                        AS buyer,
+        (COALESCE(s.rate,0) * (((COALESCE(li.jk_boxes,0)+COALESCE(li.other_boxes,0)) - COALESCE(s.less,0)))) AS total,
+        f.name                                        AS farmer_name,
+        d.name                                        AS driver_name,
+        d.vehicle_number                              AS vehicle_no,
+        d.village                                     AS village
+    FROM lot_info li
+    JOIN driver_patti dp ON dp.id = li.driver_patti_id
+    LEFT JOIN sales s    ON s.lot_id = li.id
+    LEFT JOIN buyers b   ON b.id = s.buyer_id
+    LEFT JOIN farmer f   ON f.id = li.farmer_id
+    LEFT JOIN driver d   ON d.id = dp.driver_id
+    WHERE dp.date = ?
+    ORDER BY li.lot_number ASC;
+    """
+    cur.execute(sql, (date_str,))
+    db_rows = cur.fetchall()
+
+    for r in db_rows:
+        boxes = r[1] or 0
+        less  = r[2] or 0
+        rate  = r[3] or 0
+        net_boxes = boxes - less
+        total = rate * net_boxes
+
+        rows.append({
+            "lot_number": r[0],
+            "boxes": boxes,
+            "less": less,
+            "rate": rate,
+            "buyer": r[4] or "",
+            "total": total,
+            "farmer_name": r[6] or "",
+            "driver_name": r[7] or "",
+            "vehicle_no": r[8] or "",
+            "village": r[9] or "",
+        })
+        totals["boxes"] += boxes
+        totals["less"] += less
+        totals["net_boxes"] += net_boxes
+        totals["gross"] += total
+
+    conn.close()
+    return render_template("day_sheet.html", date_str=date_str, rows=rows, totals=totals)
+
+@main.route("/reports/day-sheet/export")
+def report_day_sheet_export():
+    date_str = request.args.get("date")
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT
+            li.lot_number,
+            COALESCE(li.jk_boxes, 0) + COALESCE(li.other_boxes, 0) AS boxes,
+            COALESCE(s.less, 0) AS less,
+            COALESCE(s.rate, 0) AS rate,
+            b.name AS buyer,
+            (COALESCE(s.rate,0) * (((COALESCE(li.jk_boxes,0)+COALESCE(li.other_boxes,0)) - COALESCE(s.less,0)))) AS total,
+            f.name AS farmer_name,
+            d.name AS driver_name,
+            d.vehicle_number AS vehicle_no,
+            d.village AS village
+        FROM lot_info li
+        JOIN driver_patti dp ON dp.id = li.driver_patti_id
+        LEFT JOIN sales s    ON s.lot_id = li.id
+        LEFT JOIN buyers b   ON b.id = s.buyer_id
+        LEFT JOIN farmer f   ON f.id = li.farmer_id
+        LEFT JOIN driver d   ON d.id = dp.driver_id
+        WHERE dp.date = ?
+        ORDER BY li.lot_number ASC;
+        """,
+        (date_str,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Date", date_str])
+    w.writerow(["Lot number","Boxes (JK+Other)","Less","Rate","Buyer","Total (Rate*(Boxes-Less))","Farmer","Driver","Vehicle No","Village"])
+    for r in rows:
+        boxes = (r[1] or 0)
+        less  = (r[2] or 0)
+        rate  = (r[3] or 0)
+        total = rate * (boxes - less)
+        w.writerow([r[0], boxes, less, rate, r[4] or "", total, r[6] or "", r[7] or "", r[8] or "", r[9] or ""])
+
+    resp = make_response(out.getvalue())
+    resp.headers["Content-Disposition"] = f"attachment; filename=day_sheet_{date_str}.csv"
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    return resp
+
+@main.route("/reports/buyer")
+def report_buyer():
+    date_str = request.args.get("date", "")
+    rows = []
+    totals = {"boxes": 0, "less": 0, "net_boxes": 0, "amount": 0.0}
+    if not date_str:
+        return render_template("buyer_report.html", date_str=date_str, rows=rows, totals=totals)
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    sql = """
+    WITH lot_level AS (
+        SELECT
+            b.name AS buyer_name,
+            (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0)) AS boxes,
+            COALESCE(s.less,0) AS less,
+            COALESCE(s.rate,0) AS rate,
+            (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0) - COALESCE(s.less,0)) AS net_boxes,
+            (COALESCE(s.rate,0) * (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0) - COALESCE(s.less,0))) AS amount
+        FROM lot_info li
+        JOIN driver_patti dp ON dp.id = li.driver_patti_id
+        JOIN sales s        ON s.lot_id = li.id
+        LEFT JOIN buyers b  ON b.id = s.buyer_id
+        WHERE dp.date = ?
+    )
+    SELECT
+        buyer_name,
+        SUM(boxes)      AS total_boxes,
+        SUM(less)       AS total_less,
+        SUM(net_boxes)  AS total_net_boxes,
+        CASE WHEN SUM(net_boxes) > 0 THEN SUM(amount)/SUM(net_boxes) ELSE 0 END AS avg_rate,
+        SUM(amount)     AS total_amount
+    FROM lot_level
+    GROUP BY buyer_name
+    ORDER BY buyer_name COLLATE NOCASE;
+    """
+    cur.execute(sql, (date_str,))
+    for buyer_name, total_boxes, total_less, total_net_boxes, avg_rate, total_amount in cur.fetchall():
+        rows.append({
+            "buyer_name": buyer_name or "—",
+            "boxes": total_boxes or 0,
+            "less": total_less or 0,
+            "net_boxes": total_net_boxes or 0,
+            "rate": float(avg_rate or 0.0),
+            "amount": float(total_amount or 0.0),
+        })
+        totals["boxes"] += total_boxes or 0
+        totals["less"] += total_less or 0
+        totals["net_boxes"] += total_net_boxes or 0
+        totals["amount"] += float(total_amount or 0.0)
+
+    conn.close()
+    return render_template("buyer_report.html", date_str=date_str, rows=rows, totals=totals)
+
+@main.route("/reports/buyer/export")
+def report_buyer_export():
+    date_str = request.args.get("date")
+    if not date_str:
+        date_str = datetime.now().strftime("%Y-%m-%d")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        WITH lot_level AS (
+            SELECT
+                b.name AS buyer_name,
+                (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0)) AS boxes,
+                COALESCE(s.less,0) AS less,
+                (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0) - COALESCE(s.less,0)) AS net_boxes,
+                (COALESCE(s.rate,0) * (COALESCE(li.jk_boxes,0) + COALESCE(li.other_boxes,0) - COALESCE(s.less,0))) AS amount
+            FROM lot_info li
+            JOIN driver_patti dp ON dp.id = li.driver_patti_id
+            JOIN sales s        ON s.lot_id = li.id
+            LEFT JOIN buyers b  ON b.id = s.buyer_id
+            WHERE dp.date = ?
+        )
+        SELECT buyer_name, SUM(boxes), SUM(less), SUM(net_boxes),
+               CASE WHEN SUM(net_boxes) > 0 THEN SUM(amount)/SUM(net_boxes) ELSE 0 END AS avg_rate,
+               SUM(amount)
+        FROM lot_level
+        GROUP BY buyer_name
+        ORDER BY buyer_name COLLATE NOCASE;
+        """,
+        (date_str,)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Date", date_str])
+    w.writerow(["Buyer","Total Boxes","Less","Net Boxes","Rate","Amount"])
+    t_boxes=t_less=t_net=0
+    t_amt=0.0
+    for buyer, boxes, less, net, rate, amt in rows:
+        w.writerow([buyer or "—", boxes or 0, less or 0, net or 0, float(rate or 0.0), float(amt or 0.0)])
+        t_boxes += boxes or 0
+        t_less  += less or 0
+        t_net   += net or 0
+        t_amt   += float(amt or 0.0)
+    w.writerow(["TOTAL", t_boxes, t_less, t_net, "", t_amt])
+
+    resp = make_response(out.getvalue())
+    resp.headers["Content-Disposition"] = f"attachment; filename=buyer_report_{date_str}.csv"
+    resp.headers["Content-Type"] = "text/csv; charset=utf-8"
+    return resp

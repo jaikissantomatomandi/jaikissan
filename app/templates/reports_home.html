@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Reports</title>
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; padding: 16px; }
+    .card { border: 1px solid #ddd; border-radius: 12px; padding: 16px; max-width: 720px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    label { font-weight: 600; }
+    input[type="date"] { padding: 6px; font-size: 14px; }
+    .actions { display:flex; gap:10px; margin-top: 12px; flex-wrap:wrap; }
+    a.btn, button.btn { padding: 8px 14px; border: 0; border-radius: 10px; cursor: pointer; text-decoration: none; background:#111; color:#fff; font-weight:600; }
+  </style>
+</head>
+<body>
+{% extends "base.html" %}
+
+{% block content %}
+<h2 class="mb-3">Reports</h2>
+
+<div class="card p-3 mb-3">
+  <h5 class="mb-2">Day Sheet</h5>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <label for="day-date" class="fw-semibold me-1">Auction Date:</label>
+    <input id="day-date" type="date" class="form-control" style="max-width: 220px;" value="{{ default_date }}">
+    <button id="open-report" class="btn btn-dark">Open</button>
+  </div>
+</div>
+
+<div class="card p-3">
+  <h5 class="mb-2">Buyer Report</h5>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <label for="buyer-date" class="fw-semibold me-1">Auction Date:</label>
+    <input id="buyer-date" type="date" class="form-control" style="max-width: 220px;" value="{{ default_date }}">
+    <button id="open-buyer" class="btn btn-dark">Open</button>
+  </div>
+</div>
+
+<script>
+  document.getElementById('open-report').onclick = () => {
+    const d = document.getElementById('day-date').value;
+    if(!d){ alert('Pick a date'); return; }
+    window.location.href = `/reports/day-sheet?date=${encodeURIComponent(d)}`;
+  };
+  document.getElementById('open-buyer').onclick = () => {
+    const d = document.getElementById('buyer-date').value;
+    if(!d){ alert('Pick a date'); return; }
+    window.location.href = `/reports/buyer?date=${encodeURIComponent(d)}`;
+  };
+</script>
+{% endblock %}
+</body>
+</html>

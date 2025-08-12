@@ -22,21 +22,14 @@
     <div class="col-6 col-md-2 d-grid">
       <button type="submit" class="btn btn-secondary">Load Lots</button>
     </div>
-    <div class="col-6 col-md-2 d-grid">
-      <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#addBuyerModal">
-        + Add Buyer
-      </button>
-    </div>
-    <div class="col-12">
-      <small class="text-muted">New buyer fills into the last Buyer field you touched.</small>
-    </div>
+    <!-- (Removed the old “+ Add Buyer” button from here) -->
   </div>
 </form>
 
 <form method="post" action="{{ url_for('main.sales') }}" id="salesForm">
   <input type="hidden" name="date" value="{{ date_val }}">
 
-  <!-- Responsive table that becomes cards on small screens -->
+  <!-- Desktop table -->
   <div class="table-responsive d-none d-sm-block">
     <table class="table table-bordered align-middle">
       <thead class="table-light">
@@ -58,10 +51,10 @@
               <td>
                 <input
                   class="form-control buyer_search"
-                  placeholder="Start typing buyer…"
+                  placeholder="Tap to select buyer…"
                   id="buyer_input_{{ row['lot_id'] }}"
                   {% if s and s['buyer_id'] %} data-prefill-id="{{ s['buyer_id'] }}"{% endif %}
-                  autocomplete="off">
+                  autocomplete="off" readonly>
                 <input type="hidden" name="buyer_id_{{ row['lot_id'] }}" id="buyer_id_{{ row['lot_id'] }}" value="{{ s['buyer_id'] if s else '' }}">
               </td>
               <td>
@@ -98,10 +91,10 @@
               <div class="mc-value">
                 <input
                   class="form-control buyer_search"
-                  placeholder="Start typing buyer…"
+                  placeholder="Tap to select buyer…"
                   id="buyer_input_{{ row['lot_id'] }}"
                   {% if s and s['buyer_id'] %} data-prefill-id="{{ s['buyer_id'] }}"{% endif %}
-                  autocomplete="off">
+                  autocomplete="off" readonly>
                 <input type="hidden" name="buyer_id_{{ row['lot_id'] }}" id="buyer_id_{{ row['lot_id'] }}" value="{{ s['buyer_id'] if s else '' }}">
               </div>
             </div>
@@ -131,7 +124,7 @@
     {% endif %}
   </div>
 
-  <!-- Spacer so the floating bar doesn't cover the last rows -->
+  <!-- Spacer for the floating bar -->
   <div style="height: 88px;"></div>
 
   <!-- Floating Save Bar -->
@@ -168,6 +161,21 @@
   </div>
 </div>
 
+<!-- Buyer Picker (like Driver/Farmer) -->
+<div id="buyerPicker" class="picker-overlay" role="dialog" aria-modal="true" style="display:none">
+  <div class="picker-panel">
+    <div class="picker-header">
+      <input id="buyerPickerSearch" type="text" autocomplete="off" placeholder="Search buyer…">
+      <button id="buyerPickerClose" class="picker-close" aria-label="Close">✖</button>
+    </div>
+    <div id="buyerPickerList" class="picker-list"></div>
+    <div class="picker-footer">
+      <button id="buyerPickerAdd" class="btn btn-outline-secondary">+ Add Buyer</button>
+      <button id="buyerPickerCancel" class="btn btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <style>
   /* --- Mobile cards for xs screens --- */
   .mobile-cards { display: grid; gap: .75rem; }
@@ -179,7 +187,6 @@
   .mc-label { font-size: .9rem; color: #6b7280; }
   .mc-value { font-weight: 500; }
 
-  /* Floating save bar pinned at bottom, under Bootstrap modals (z-index 1050) */
   .floating-save-bar {
     position: fixed; left: 0; right: 0; bottom: 0;
     background: #fff; border-top: 1px solid #dee2e6;
@@ -190,12 +197,24 @@
     .floating-save-bar { padding-bottom: max(8px, env(safe-area-inset-bottom)); }
   }
 
-  /* Touch-friendly defaults on small screens */
   @media (max-width: 576px) {
     .btn { padding: .65rem .9rem; font-size: 1rem; }
     input, select { font-size: 16px !important; } /* prevent iOS zoom */
     .table td, .table th { padding: .55rem; }
   }
+
+  /* Picker styles (same vibe as entry page) */
+  .picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000}
+  .picker-panel{position:absolute;inset:6vh 4vw;background:#fff;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:flex;flex-direction:column}
+  .picker-header{display:flex;gap:8px;align-items:center;padding:12px;border-bottom:1px solid #e5e7eb}
+  .picker-header input{flex:1;padding:10px 12px;border:1px solid #ced4da;border-radius:8px;font-size:16px}
+  .picker-close{border:0;background:transparent;font-size:22px;line-height:1;cursor:pointer}
+  .picker-list{overflow:auto;max-height:60vh}
+  .picker-item{padding:12px 16px;border-bottom:1px solid #f1f3f5;cursor:pointer}
+  .picker-item:hover,.picker-item.active{background:#f5f9ff}
+  .picker-sub{color:#6c757d;font-size:13px;margin-left:6px}
+  .picker-footer{display:flex;gap:10px;justify-content:flex-end;padding:10px 12px;border-top:1px solid #e5e7eb}
+  @media(min-width:768px){.picker-panel{inset:10vh calc(50vw - 320px)}}
 </style>
 
 <script>
@@ -206,54 +225,119 @@ document.addEventListener("DOMContentLoaded", function () {
   function fetchBuyers(q="") {
     const url = new URL("{{ url_for('main.api_buyers') }}", window.location.origin);
     if (q) url.searchParams.set("q", q);
-    return fetch(url).then(r => r.json());
+    return fetch(url, { headers: { "Accept":"application/json" } }).then(r => r.json());
   }
 
-  async function initBuyerPickers() {
-    buyersCache = await fetchBuyers("");
+  // --- Buyer Picker (like Driver/Farmer) ---
+  const overlay = document.getElementById("buyerPicker");
+  const searchEl = document.getElementById("buyerPickerSearch");
+  const listEl   = document.getElementById("buyerPickerList");
+  const closeBtn = document.getElementById("buyerPickerClose");
+  const cancelBtn= document.getElementById("buyerPickerCancel");
+  const addBtn   = document.getElementById("buyerPickerAdd");
 
+  let pickerState = { items:[], active:-1, onSelect:null };
+
+  function render(items) {
+    listEl.innerHTML = "";
+    if (!items || !items.length) {
+      listEl.innerHTML = '<div class="picker-item text-muted" style="cursor:default">No matches</div>';
+      return;
+    }
+    items.forEach((b, idx) => {
+      const div = document.createElement("div");
+      div.className = "picker-item" + (idx===pickerState.active ? " active" : "");
+      div.tabIndex = 0;
+      div.dataset.index = idx;
+      const label = b.label || b.name || "";
+      const sub = b.location || b.phone || b.phone_number || "";
+      div.innerHTML = `<strong>${escapeHtml(label)}</strong>${sub ? `<span class="picker-sub">${escapeHtml(sub)}</span>` : ""}`;
+      div.addEventListener("click", () => choose(idx));
+      listEl.appendChild(div);
+    });
+  }
+  function choose(i){
+    const it = pickerState.items[i]; if(!it || !pickerState.onSelect) return;
+    pickerState.onSelect(it);
+    overlay.style.display = "none";
+  }
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+
+  async function openBuyerPicker({ initial="", onSelect }) {
+    pickerState = { items:[], active:-1, onSelect };
+    overlay.style.display = "block";
+    searchEl.value = initial || "";
+    render([]);
+    // initial fetch
+    try {
+      buyersCache = buyersCache.length ? buyersCache : await fetchBuyers("");
+      const q = searchEl.value.trim();
+      const list = (!q ? buyersCache : (await fetchBuyers(q)));
+      pickerState.items = list;
+      pickerState.active = list.length ? 0 : -1;
+      render(list);
+    } catch { render([]); }
+    setTimeout(() => searchEl.focus(), 10);
+  }
+
+  function closePicker(){ overlay.style.display="none"; pickerState.onSelect=null; }
+  closeBtn.addEventListener("click", closePicker);
+  cancelBtn.addEventListener("click", closePicker);
+
+  // live search
+  let searchT = null;
+  searchEl.addEventListener("input", () => {
+    clearTimeout(searchT);
+    searchT = setTimeout(async () => {
+      const q = searchEl.value.trim();
+      const list = (!q ? buyersCache : (await fetchBuyers(q).catch(()=>[])));
+      pickerState.items = list; pickerState.active = list.length ? 0 : -1; render(list);
+    }, 150);
+  });
+
+  overlay.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { e.preventDefault(); closePicker(); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); pickerState.active = Math.min(pickerState.active+1, pickerState.items.length-1); render(pickerState.items); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); pickerState.active = Math.max(pickerState.active-1, 0); render(pickerState.items); }
+    else if (e.key === "Enter" && pickerState.active >= 0) { e.preventDefault(); choose(pickerState.active); }
+  });
+
+  // “+ Add Buyer” inside picker opens the modal, then returns selection on success
+  addBtn.addEventListener("click", () => {
+    overlay.style.display = "none";
+    const m = new bootstrap.Modal(document.getElementById("addBuyerModal"));
+    m.show();
+  });
+
+  // Init Buyer fields (open picker on focus/click, prefill labels)
+  async function initBuyerPickers() {
+    // preload cache
+    buyersCache = await fetchBuyers("").catch(()=>[]);
+    // prefill existing selections
     document.querySelectorAll(".buyer_search").forEach(inp => {
       const lotId = inp.id.replace("buyer_input_", "");
       const hidden = document.getElementById("buyer_id_" + lotId);
-
-      inp.addEventListener("focus", () => { lastFocusedLotId = lotId; });
-
-      const aw = new Awesomplete(inp, { minChars: 1, autoFirst: true });
-
-      function setList(q) {
-        const list = buyersCache
-          .filter(b => !q || b.label.toLowerCase().includes(q.toLowerCase()))
-          .map(b => b.label);
-        aw.list = list;
-      }
-      setList("");
-
-      const preId = inp.dataset.prefillId;
+      const preId = inp.dataset.prefillId || hidden.value;
       if (preId) {
         const found = buyersCache.find(b => String(b.id) === String(preId));
-        if (found) { inp.value = found.label; hidden.value = found.id; }
+        if (found) inp.value = found.label || found.name || "";
       }
-
-      inp.addEventListener("input", async function () {
-        const q = this.value.trim();
-        setList(q);
-        if (q.length) {
-          const server = await fetchBuyers(q);
-          server.forEach(s => { if (!buyersCache.find(b => b.id === s.id)) buyersCache.push(s); });
-          setList(q);
-        }
-        hidden.value = "";
-      });
-
-      inp.addEventListener("awesomplete-selectcomplete", e => {
-        const chosen = e.text.value || e.text;
-        const match = buyersCache.find(b => b.label === chosen);
-        hidden.value = match ? match.id : "";
-      });
+      const open = () => {
+        lastFocusedLotId = lotId;
+        openBuyerPicker({
+          initial: inp.value,
+          onSelect: (b) => {
+            inp.value = b.label || b.name || "";
+            hidden.value = b.id;
+          }
+        });
+      };
+      inp.addEventListener("focus", open);
+      inp.addEventListener("click", open);
     });
   }
 
-  // Create buyer via AJAX and insert into last-focused Buyer field
+  // Add Buyer via AJAX (same as before, but also applies to last-focused field)
   const addBuyerModal = document.getElementById("addBuyerModal");
   addBuyerModal.addEventListener("show.bs.modal", () => {
     document.getElementById("buyerForm").reset();
@@ -266,7 +350,7 @@ document.addEventListener("DOMContentLoaded", function () {
     const payload = Object.fromEntries(new FormData(form).entries());
     const res = await fetch("{{ url_for('main.api_buyers') }}", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Accept":"application/json" },
       body: JSON.stringify(payload)
     });
 
@@ -277,27 +361,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
 
     const created = await res.json(); // {id, label, ...}
-    // update cache + fill last-focused
-    const existing = buyersCache.find(b => b.id === created.id);
-    if (!existing) buyersCache.push(created);
+    if (!buyersCache.find(b => b.id === created.id)) buyersCache.push(created);
 
     if (lastFocusedLotId) {
       const inp = document.getElementById("buyer_input_" + lastFocusedLotId);
       const hid = document.getElementById("buyer_id_" + lastFocusedLotId);
-      if (inp && hid) {
-        inp.value = created.label;
-        hid.value = created.id;
-      }
+      if (inp && hid) { inp.value = created.label || created.name || ""; hid.value = created.id; }
     }
 
     bootstrap.Modal.getInstance(addBuyerModal).hide();
   });
 
-  // Single submit handler (AJAX save + toast)
+  // Save (unchanged)
   document.getElementById("salesForm").addEventListener("submit", async function (e) {
     e.preventDefault();
 
-    // Gentle warning if text typed but not selected
     const warn = [...document.querySelectorAll(".buyer_search")].some(inp => {
       const lotId = inp.id.replace("buyer_input_", "");
       const hid = document.getElementById("buyer_id_" + lotId);
