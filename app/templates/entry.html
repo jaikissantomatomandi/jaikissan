@@ -6,20 +6,19 @@
   <input type="hidden" name="date" id="form_date">
 
   <!-- Driver and Farmer Section -->
-<div class="row g-2 mb-3">
-  <div class="col-12 col-md-7">
-    <input id="driver_search" name="driver_name" class="form-control"
-           placeholder="Tap to select driver…" required readonly>
-    <input type="hidden" name="driver_id" id="driver_id">
+  <div class="row g-2 mb-3">
+    <div class="col-12 col-md-7">
+      <input id="driver_search" name="driver_name" class="form-control"
+             placeholder="Tap to select driver…" required readonly>
+      <input type="hidden" name="driver_id" id="driver_id">
+    </div>
+    <div class="col-6 col-md-2">
+      <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control" placeholder="₹/box" required>
+    </div>
+    <div class="col-6 col-md-3">
+      <input type="date" id="entry_date" class="form-control" value="{{ today }}" required>
+    </div>
   </div>
-  <div class="col-6 col-md-2">
-    <input type="number" step="1" name="transport_rate" id="transport_rate" class="form-control" placeholder="₹/box" required>
-  </div>
-  <div class="col-6 col-md-3">
-    <input type="date" id="entry_date" class="form-control" value="{{ today }}" required>
-  </div>
-</div>
-
 
   <!-- Lots Table -->
   <div class="table-responsive">
@@ -31,26 +30,32 @@
       </thead>
       <tbody>
         <tr class="lot-row">
-          <td class="lot_number_cell">1</td>
-          <td>
+          <td class="lot_number_cell" data-label="Lot #">1</td>
+          <td data-label="Farmer">
             <div class="d-flex">
               <input class="form-control farmer_search" name="farmer_name[]" placeholder="Tap to select farmer…" required readonly>
               <input type="hidden" name="farmer_id[]" class="farmer_id">
             </div>
           </td>
-          <td><input type="number" name="jk_boxes[]" class="form-control jk_boxes" min="0" required></td>
-          <td><input type="number" name="other_boxes[]" class="form-control other_boxes" min="0" required></td>
-          <td>
-            <button type="button" class="btn btn-warning add-row">➕</button>
-            <button type="button" class="btn btn-danger remove-row">✖</button>
+          <td data-label="JK"><input type="number" name="jk_boxes[]" class="form-control jk_boxes" min="0" required></td>
+          <td data-label="Other"><input type="number" name="other_boxes[]" class="form-control other_boxes" min="0" required></td>
+          <td data-label="+/-" class="text-nowrap">
+            <button type="button" class="btn btn-warning add-row btn-touch">➕</button>
+            <button type="button" class="btn btn-danger remove-row btn-touch">✖</button>
           </td>
         </tr>
       </tbody>
     </table>
   </div>
 
-  <button type="submit" class="btn btn-primary">Submit Entry</button>
+  <!-- Desktop submit -->
+  <button type="submit" class="btn btn-primary d-none d-md-inline-block">Submit Entry</button>
 </form>
+
+<!-- Mobile sticky submit -->
+<div class="submit-dock d-md-none">
+  <button id="submitDockBtn" class="btn btn-primary btn-lg w-100">Submit Entry</button>
+</div>
 
 <!-- Post-submit splash -->
 <div id="postSubmitSplash" class="splash-overlay" aria-modal="true" role="dialog">
@@ -151,6 +156,10 @@ document.addEventListener("DOMContentLoaded", function () {
   document.getElementById("form_date").value = dateInput.value;
   fetchLotStartNumber();
 
+  // Dock submit (mobile)
+  const submitDockBtn = document.getElementById('submitDockBtn');
+  if (submitDockBtn) submitDockBtn.addEventListener('click', () => form.requestSubmit());
+
   // Validate before submit
   form.addEventListener("submit", function (e) {
     if (!document.getElementById("driver_id").value) {
@@ -182,18 +191,23 @@ document.addEventListener("DOMContentLoaded", function () {
       : `${item.name}${item.phone ? " ("+item.phone+")":""}`;
   }
   function render(items){
-    list.innerHTML="";
-    items.forEach((it,idx)=>{
-      const div=document.createElement("div");
-      div.className="picker-item" + (idx===state.active?" active":"");
-      div.tabIndex=0;
-      div.dataset.index=idx;
-      div.innerHTML = `<strong>${labelFor(it)}</strong>` + (state.type==="driver" ? "" : (it.phone? `<span class="picker-sub">${it.phone}</span>`:""));
-      div.addEventListener("click",()=>choose(idx));
-      list.appendChild(div);
-    });
+  list.innerHTML = "";
+  if (!items || !items.length){
+    list.innerHTML = '<div class="picker-item text-muted" style="cursor:default">No matches</div>';
+    return;
   }
-  const fetchResults = debounce(q=>{
+  items.forEach((it,idx)=>{
+    const div=document.createElement("div");
+    div.className="picker-item" + (idx===state.active?" active":"");
+    div.tabIndex=0;
+    div.dataset.index=idx;
+    div.innerHTML = `<strong>${labelFor(it)}</strong>` +
+      (state.type==="driver" ? "" : (it.phone? `<span class="picker-sub">${it.phone}</span>`:""));
+    div.addEventListener("click",()=>choose(idx));
+    list.appendChild(div);
+  });
+}
+const fetchResults = debounce(q=>{
     const url = state.type==="driver" ? `/api/drivers?q=${encodeURIComponent(q)}`
                                       : `/api/farmers?q=${encodeURIComponent(q)}`;
     fetch(url).then(r=>r.json()).then(arr=>{
@@ -204,26 +218,42 @@ document.addEventListener("DOMContentLoaded", function () {
   }, 150);
 
   function openPicker({type, initial="", onSelect}){
-    state = { type, onSelect, items:[], active:-1 };
-    overlay.style.display = "block";
-    btnAddNew.style.display = "none";
-    btnAddNew.onclick = () => {
-      overlay.style.display="none";
-      if(type==="farmer"){
-        const m = document.getElementById("addFarmerModal");
-        if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
-        else location.href="/add_farmer_modal";
-      } else {
-        const m = document.getElementById("addDriverModal");
-        if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
-        else location.href="/add_driver";
-      }
-    };
-    inp.value = initial || "";
-    inp.placeholder = type==="driver" ? "Search driver (name or vehicle)…" : "Search farmer (name or phone)…";
-    render([]);
-    setTimeout(()=>{ inp.focus(); fetchResults(inp.value); }, 10);
-  }
+  state = { type, onSelect, items:[], active:-1 };
+  overlay.style.display = "block";
+
+  // Show the Add button with correct label and action
+  btnAddNew.style.display = "inline-block";
+  btnAddNew.textContent = type === "driver" ? "+ Add Driver" : "+ Add Farmer";
+  btnAddNew.onclick = () => {
+    overlay.style.display="none";
+    if(type==="farmer"){
+      const m = document.getElementById("addFarmerModal");
+      if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
+      else location.href="/add_farmer_modal";
+    } else {
+      const m = document.getElementById("addDriverModal");
+      if(m && typeof bootstrap!=="undefined") new bootstrap.Modal(m).show();
+      else location.href="/add_driver";
+    }
+  };
+
+  inp.value = initial || "";
+  inp.placeholder = type==="driver" ? "Search driver (name or vehicle)…" : "Search farmer (name or phone)…";
+
+  // Immediate fetch (not debounced) so results show up instantly
+  const url = state.type==="driver" ? `/api/drivers?q=${encodeURIComponent(inp.value)}`
+                                    : `/api/farmers?q=${encodeURIComponent(inp.value)}`;
+  list.innerHTML = "";                 // clear old
+  fetch(url).then(r=>r.json()).then(arr=>{
+    state.items = arr || [];
+    state.active = state.items.length ? 0 : -1;
+    render(state.items);
+  }).catch(()=>{ list.innerHTML = '<div class="picker-item text-muted" style="cursor:default">No matches</div>'; });
+
+  // Focus and keep debounced fetching for typing
+  setTimeout(()=> inp.focus(), 10);
+}
+
   function closePicker(){ overlay.style.display="none"; state.onSelect=null; }
   function choose(idx){
     const item = state.items[idx];
@@ -260,7 +290,6 @@ document.addEventListener("DOMContentLoaded", function () {
       }
     });
   });
-  // Also open on click (mobile)
   driverInput.addEventListener("click", () => driverInput.dispatchEvent(new Event("focus")));
 
   // Per-row farmer picker
@@ -331,6 +360,9 @@ document.addEventListener("DOMContentLoaded", function () {
 </script>
 
 <style>
+  /* --- General touch sizing --- */
+  .btn-touch{ padding:.5rem .75rem; }
+
   /* Splash overlay */
   .splash-overlay {
     position: fixed; inset: 0;
@@ -350,10 +382,49 @@ document.addEventListener("DOMContentLoaded", function () {
   .splash-actions { display: grid; gap: 10px; margin-top: 8px; }
   @media (min-width: 480px) { .splash-actions { grid-template-columns: 1fr 1fr; } }
 
-  /* Table: avoid inner scrollbars & clipping on mobile */
-  .table-responsive { overflow-y: visible !important; }
-  #lotsTable { table-layout: fixed; }
+  /* Table desktop */
+  #lotsTable { table-layout: fixed; background:#fff; }
   #lotsTable th, #lotsTable td { white-space: nowrap; }
+
+  /* --- Mobile card view for lot rows --- */
+  @media (max-width: 767.98px){
+    .table-responsive { overflow-y: visible !important; }
+    #lotsTable thead { display:none; }
+    #lotsTable, #lotsTable tbody, #lotsTable tr, #lotsTable td { display:block; width:100%; }
+    #lotsTable tr.lot-row{
+      border:1px solid #e9ecef; border-radius:12px; padding:.5rem .6rem .6rem;
+      margin-bottom:.75rem; box-shadow:0 1px 3px rgba(0,0,0,.05);
+    }
+    #lotsTable td { padding:.35rem .2rem; }
+
+    /* Show labels from data-label */
+    #lotsTable td[data-label]{
+      display:flex; align-items:center; gap:.5rem;
+    }
+    #lotsTable td[data-label]::before{
+      content: attr(data-label) ":";
+      min-width:5.2rem; color:#6c757d; font-size:.95rem;
+    }
+
+    /* Buttons row: bigger touch targets */
+    #lotsTable td[data-label="+/-"] .btn{
+      padding:.5rem .7rem; font-size:1rem; border-radius:.6rem;
+    }
+
+    /* Inputs: bigger on mobile */
+    #lotsTable input.form-control{
+      height: 42px; font-size: 16px;
+    }
+
+    /* space for sticky submit */
+    body { padding-bottom: 76px; }
+  }
+
+  /* Mobile sticky submit bar */
+  .submit-dock{
+    position: fixed; left:0; right:0; bottom:0;
+    background:#fff; border-top:1px solid #e9ecef; padding:.6rem .8rem; z-index: 1200;
+  }
 
   /* Smart Picker overlay (AppSheet-style) */
   .picker-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:3000}
